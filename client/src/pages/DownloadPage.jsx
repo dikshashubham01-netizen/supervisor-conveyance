@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Download,
   Smartphone,
@@ -9,16 +9,38 @@ import {
   Navigation,
   Sparkles,
   HardDrive,
-  FileCheck
+  FileCheck,
+  RefreshCw
 } from 'lucide-react';
 
 export function DownloadPage({ onBackToLogin }) {
   const [downloading, setDownloading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [downloadedMb, setDownloadedMb] = useState(0);
-  const [totalMb, setTotalMb] = useState(7.01);
+  const [totalMb, setTotalMb] = useState('--');
   const [completed, setCompleted] = useState(false);
   const [error, setError] = useState(null);
+
+  // Dynamically loaded version info
+  const [appVersion, setAppVersion] = useState('...');
+  const [changelog, setChangelog] = useState('');
+  const [releaseDate, setReleaseDate] = useState('');
+  const [versionLoading, setVersionLoading] = useState(true);
+
+  useEffect(() => {
+    // Fetch live version info from /version.json (served from Vercel public folder)
+    fetch(`/version.json?t=${Date.now()}`)
+      .then((r) => r.json())
+      .then((data) => {
+        setAppVersion(data.version || '1.0.2');
+        setChangelog(data.changelog || '');
+        setReleaseDate(data.releaseDate || data.release_date || '');
+      })
+      .catch(() => {
+        setAppVersion('1.0.2');
+      })
+      .finally(() => setVersionLoading(false));
+  }, []);
 
   const startDownload = async () => {
     try {
@@ -36,7 +58,7 @@ export function DownloadPage({ onBackToLogin }) {
       }
 
       const contentLengthHeader = response.headers.get('Content-Length');
-      const totalBytes = contentLengthHeader ? parseInt(contentLengthHeader, 10) : 7351590;
+      const totalBytes = contentLengthHeader ? parseInt(contentLengthHeader, 10) : 7477260;
       setTotalMb((totalBytes / (1024 * 1024)).toFixed(2));
 
       const reader = response.body.getReader();
@@ -115,7 +137,11 @@ export function DownloadPage({ onBackToLogin }) {
           <div className="grid grid-cols-3 gap-2 bg-slate-850/80 p-3 rounded-2xl border border-slate-800 text-xs">
             <div className="flex flex-col items-center">
               <span className="text-[10px] text-slate-400">Version</span>
-              <span className="font-bold text-white font-mono">v1.0.0</span>
+              <span className="font-bold text-white font-mono flex items-center gap-1">
+                {versionLoading
+                  ? <RefreshCw className="w-3 h-3 animate-spin text-slate-500" />
+                  : `v${appVersion}`}
+              </span>
             </div>
             <div className="flex flex-col items-center border-x border-slate-750">
               <span className="text-[10px] text-slate-400">Size</span>
@@ -126,6 +152,18 @@ export function DownloadPage({ onBackToLogin }) {
               <span className="font-bold text-emerald-400">Android 8+</span>
             </div>
           </div>
+
+          {/* What's New Changelog */}
+          {changelog && (
+            <div className="p-3 rounded-2xl bg-brand-950/60 border border-brand-700/50 text-left">
+              <p className="text-[10px] font-bold text-brand-300 uppercase tracking-wider mb-1 flex items-center gap-1">
+                <Sparkles className="w-3 h-3" />
+                What's New in v{appVersion}
+                {releaseDate && <span className="ml-auto text-slate-500 font-normal normal-case">{releaseDate}</span>}
+              </p>
+              <p className="text-[11px] text-slate-300 leading-relaxed">{changelog}</p>
+            </div>
+          )}
 
           {/* Download Progress / Action Area */}
           <div className="flex flex-col gap-3">
