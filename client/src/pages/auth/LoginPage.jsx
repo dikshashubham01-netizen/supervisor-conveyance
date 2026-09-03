@@ -15,10 +15,26 @@ export function LoginPage({ onGoToDownload }) {
     setError(null);
     setLoading(true);
 
+    const id = employeeId.trim();
+    const pw = password.trim();
+
+    if (!id || !pw) {
+      setError('Please enter both email/ID and password.');
+      setLoading(false);
+      return;
+    }
+
     try {
-      await login(employeeId.trim(), password);
+      await login(id, pw);
     } catch (err) {
-      setError(err.message || 'Login failed. Please verify credentials.');
+      const msg = err.message || '';
+      if (msg.toLowerCase().includes('network') || msg.toLowerCase().includes('fetch')) {
+        setError('Cannot reach server. The server may be waking up — please wait 30 seconds and try again.');
+      } else if (msg.toLowerCase().includes('401') || msg.toLowerCase().includes('invalid') || msg.toLowerCase().includes('credentials')) {
+        setError('Incorrect email or password. Please check and try again.');
+      } else {
+        setError(msg || 'Login failed. Please verify credentials.');
+      }
     } finally {
       setLoading(false);
     }
@@ -55,7 +71,7 @@ export function LoginPage({ onGoToDownload }) {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4" autoComplete="off">
             {/* Admin Email/ID */}
             <div>
               <label className="text-slate-300 font-semibold block mb-1.5 text-sm">Admin Email / ID</label>
@@ -64,12 +80,15 @@ export function LoginPage({ onGoToDownload }) {
                   <User className="w-4 h-4" />
                 </div>
                 <input
-                  type="text"
+                  type="email"
                   required
-                  placeholder="Enter your admin email or ID"
+                  placeholder="soumya.ghosh@genus.in"
                   value={employeeId}
                   onChange={(e) => setEmployeeId(e.target.value)}
-                  autoComplete="username"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck="false"
                   className="w-full rounded-xl pl-10 pr-4 py-3 text-sm text-white font-mono focus:outline-none transition"
                   style={{ backgroundColor: '#0f172a', border: '1.5px solid #475569' }}
                 />
@@ -89,7 +108,7 @@ export function LoginPage({ onGoToDownload }) {
                   placeholder="Enter your password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  autoComplete="current-password"
+                  autoComplete="new-password"
                   className="w-full rounded-xl pl-10 pr-12 py-3 text-sm text-white focus:outline-none transition"
                   style={{ backgroundColor: '#0f172a', border: '1.5px solid #475569' }}
                 />
