@@ -1,6 +1,6 @@
-const RAW_BACKEND = import.meta.env.VITE_API_URL || '';
+const RAW_BACKEND = import.meta.env.VITE_API_URL || 'https://supervisor-api-vvba.onrender.com';
 export const BACKEND_URL = RAW_BACKEND.replace(/\/+$/, '');
-export const API_BASE = BACKEND_URL ? `${BACKEND_URL}/api` : '/api';
+export const API_BASE = `${BACKEND_URL}/api`;
 
 export function getUploadUrl(filename) {
   if (!filename) return '';
