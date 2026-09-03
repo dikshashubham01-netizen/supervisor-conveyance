@@ -37,6 +37,9 @@ export function AuthProvider({ children }) {
 
   const login = async (employee_id, password) => {
     const res = await api.auth.login(employee_id, password);
+    if (res.user?.role !== 'admin') {
+      throw new Error('Access denied: Supervisor login is only permitted on the Mobile App. This portal is for Administrators only.');
+    }
     setToken(res.token);
     setUser(res.user);
     return res.user;

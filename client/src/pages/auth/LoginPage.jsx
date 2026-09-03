@@ -42,15 +42,15 @@ export function LoginPage() {
           </div>
           <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">GeoConvey</h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            Supervisor Location Monitoring & Bike Conveyance System
+            Admin Operations Portal & Conveyance System
           </p>
         </div>
 
         {/* Login Form Card */}
         <div className="bg-slate-900/90 backdrop-blur-xl rounded-3xl p-6 sm:p-8 border border-slate-800 shadow-2xl flex flex-col gap-5">
           <div className="border-b border-slate-800 pb-3">
-            <h2 className="text-lg font-bold text-white tracking-tight">Account Login</h2>
-            <p className="text-xs text-slate-400 mt-0.5">Enter your Employee ID / Username and Password</p>
+            <h2 className="text-lg font-bold text-white tracking-tight">Administrator Login</h2>
+            <p className="text-xs text-slate-400 mt-0.5">Sign in to manage supervisors, view live tracks, and review conveyance</p>
           </div>
 
           {error && (
@@ -63,7 +63,7 @@ export function LoginPage() {
           <form onSubmit={handleSubmit} className="flex flex-col gap-4 text-xs">
             <div>
               <label className="text-slate-300 font-semibold block mb-1.5">
-                Employee ID / Username
+                Admin Email / ID
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
@@ -72,7 +72,7 @@ export function LoginPage() {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. EMP001 or admin"
+                  placeholder="soumya.ghosh@genus.in"
                   value={employeeId}
                   onChange={(e) => setEmployeeId(e.target.value)}
                   className="w-full bg-slate-850 border border-slate-750 rounded-xl pl-9 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-brand-500 transition font-mono"
@@ -104,35 +104,32 @@ export function LoginPage() {
               disabled={loading}
               className="mt-2 w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-brand-600 to-emerald-600 hover:from-brand-500 hover:to-emerald-500 text-white font-bold text-sm shadow-xl shadow-emerald-950/80 active:scale-95 transition flex items-center justify-center gap-2 disabled:opacity-50"
             >
-              <span>{loading ? 'Authenticating...' : 'Sign In to Portal'}</span>
+              <span>{loading ? 'Authenticating Admin...' : 'Sign In as Administrator'}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
 
-          {/* Quick Demo Credential Fillers */}
-          <div className="pt-3 border-t border-slate-800 flex flex-col gap-2">
-            <span className="text-[11px] font-semibold text-slate-400 flex items-center gap-1">
-              <Sparkles className="w-3 h-3 text-amber-400" />
-              Quick Demo Logins:
-            </span>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => fillCredentials('admin', 'admin123')}
-                className="py-1.5 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 text-[11px] border border-slate-750 text-left transition"
-              >
-                <strong className="text-brand-400 block">Admin Console</strong>
-                <span className="text-slate-400 font-mono">admin / admin123</span>
-              </button>
+          {/* Quick Credential Filler for Soumya Ghosh */}
+          <div className="pt-3 border-t border-slate-800 flex flex-col gap-2.5">
+            <button
+              type="button"
+              onClick={() => fillCredentials('soumya.ghosh@genus.in', 'Soumya@123')}
+              className="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 text-xs border border-slate-700/80 text-left transition flex items-center justify-between"
+            >
+              <div>
+                <strong className="text-brand-400 block text-[11px] uppercase tracking-wider">Fill Admin Credentials</strong>
+                <span className="text-slate-300 font-mono text-xs">soumya.ghosh@genus.in</span>
+              </div>
+              <Sparkles className="w-4 h-4 text-amber-400" />
+            </button>
 
-              <button
-                type="button"
-                onClick={() => fillCredentials('EMP001', 'supervisor123')}
-                className="py-1.5 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 text-[11px] border border-slate-750 text-left transition"
-              >
-                <strong className="text-emerald-400 block">Supervisor (EMP001)</strong>
-                <span className="text-slate-400 font-mono">EMP001 / supervisor123</span>
-              </button>
+            {/* Notice that Supervisor Login is on Mobile App Only */}
+            <div className="p-2.5 rounded-xl bg-slate-850/80 border border-slate-800 text-[11px] text-slate-400 flex items-start gap-2">
+              <span className="text-sm">📱</span>
+              <div>
+                <strong className="text-slate-300 block">Supervisor Login Notice:</strong>
+                <span>Supervisors can only log in through the <strong>Supervisor Android Mobile App</strong> to record GPS travel & odometers.</span>
+              </div>
             </div>
           </div>
         </div>
