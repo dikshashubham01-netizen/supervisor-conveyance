@@ -1,0 +1,44 @@
+# Node dependencies
+node_modules/
+*/node_modules/
+
+# Production build outputs
+dist/
+*/dist/
+
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# Database files
+*.db
+*.db-wal
+*.db-shm
+server/conveyance.db
+server/conveyance.db-wal
+server/conveyance.db-shm
+
+# Server uploaded photos (except default svg assets in seed)
+# server/uploads/
+
+# Android build files and SDK paths
+supervisor-app/android/.gradle/
+supervisor-app/android/build/
+supervisor-app/android/app/build/
+supervisor-app/android/local.properties
+supervisor-app/android/captures/
+supervisor-app/android/.idea/
+*.apk
+!Supervisor-App.apk
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS Files
+.DS_Store
+Thumbs.db

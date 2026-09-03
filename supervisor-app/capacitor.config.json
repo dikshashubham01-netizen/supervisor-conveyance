@@ -1,0 +1,15 @@
+{
+  "appId": "com.geoconvey.supervisor",
+  "appName": "Supervisor Conveyance",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true
+  },
+  "plugins": {
+    "Camera": {
+      "presentationStyle": "fullscreen"
+    },
+    "Geolocation": {}
+  }
+}

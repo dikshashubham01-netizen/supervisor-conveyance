@@ -1,0 +1,16 @@
+{
+  "name": "supervisor-conveyance-root",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Supervisor Location Monitoring & Bike Conveyance Management System",
+  "scripts": {
+    "server": "npm --prefix server run dev",
+    "client": "npm --prefix client run dev",
+    "app": "npm --prefix supervisor-app run dev",
+    "app:build": "npm --prefix supervisor-app run cap:build",
+    "app:apk": "cd supervisor-app/android && .\\gradlew.bat assembleDebug",
+    "seed": "npm --prefix server run seed",
+    "install:all": "npm --prefix server install && npm --prefix client install && npm --prefix supervisor-app install",
+    "dev": "node run-dev.js"
+  }
+}
