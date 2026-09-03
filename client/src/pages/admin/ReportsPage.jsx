@@ -74,12 +74,39 @@ export function ReportsPage() {
     status: status !== 'ALL' ? status : undefined
   };
 
+  // Helper: authenticated file download using fetch + blob
+  const downloadWithAuth = async (url, filename) => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Export failed (${res.status})`);
+      }
+      const blob = await res.blob();
+      const objectUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(objectUrl);
+    } catch (err) {
+      alert(`Download error: ${err.message}`);
+    }
+  };
+
   const handleExportCsv = () => {
-    window.open(api.reports.getCsvUrl(queryParams), '_blank');
+    const filename = `Conveyance_Report_${new Date().toISOString().slice(0, 10)}.csv`;
+    downloadWithAuth(api.reports.getCsvUrl(queryParams), filename);
   };
 
   const handleExportExcel = () => {
-    window.open(api.reports.getExcelUrl(queryParams), '_blank');
+    const filename = `Conveyance_Report_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    downloadWithAuth(api.reports.getExcelUrl(queryParams), filename);
   };
 
   const setPresetRange = (preset) => {
