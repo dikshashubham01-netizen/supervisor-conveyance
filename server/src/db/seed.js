@@ -106,13 +106,17 @@ export async function ensureAdminAndCleanState() {
   // Remove old generic demo admin username if it was used
   db.prepare('DELETE FROM users WHERE employee_id = "admin"').run();
 
-  // Remove demo supervisor accounts (EMP001, EMP002, EMP003) from seed ONLY if they still exist
-  // Real supervisors created by admin will have different IDs set by admin
-  db.prepare('DELETE FROM users WHERE employee_id IN ("EMP001","EMP002","EMP003") AND role = "supervisor"').run();
-
-  // IMPORTANT: Do NOT delete supervisor accounts created by admin (role=supervisor with non-demo IDs).
-  // Only clean up orphaned duty sessions from demo accounts.
-  // Real duty sessions created by actual supervisors are preserved.
+  // IMPORTANT: NEVER delete any supervisor accounts or duty sessions!
+  // All supervisor accounts (including EMP001, EMP002, etc.) and their duty sessions are permanently kept!
+  const existingEmp = db.prepare('SELECT id FROM users WHERE employee_id = "EMP001"').get();
+  if (!existingEmp) {
+    const supervisorPassHash = await bcrypt.hash('Soumya@123', 10);
+    db.prepare(`
+      INSERT INTO users (id, employee_id, name, phone, password_hash, role, status)
+      VALUES (?, 'EMP001', 'Shubham', '9216013070', ?, 'supervisor', 'active')
+    `).run(uuidv4(), supervisorPassHash);
+    console.log('✅ Ensured supervisor EMP001 (Shubham) is active');
+  }
 
   // Ensure default conveyance rate exists
   const rateCount = db.prepare('SELECT COUNT(*) as count FROM conveyance_rates').get()?.count || 0;
