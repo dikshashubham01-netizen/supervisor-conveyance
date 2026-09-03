@@ -12,5 +12,8 @@
     "seed": "npm --prefix server run seed",
     "install:all": "npm --prefix server install && npm --prefix client install && npm --prefix supervisor-app install",
     "dev": "node run-dev.js"
-  }
+  },
+  "workspaces": [
+    "client"
+  ]
 }
