@@ -1,6 +1,26 @@
+// ─── Time Parsing ────────────────────────────────────────────────────────────
+// SQLite stores timestamps as "YYYY-MM-DD HH:MM:SS" (UTC, no Z suffix).
+// Browsers parse strings without timezone info as LOCAL time — wrong!
+// We force UTC parse then let toLocaleString() convert to user's local timezone.
+function parseUTC(dateStr) {
+  if (!dateStr) return null;
+  // Already has timezone marker (Z, +, -)
+  if (/[Z+\-]\d*$/.test(String(dateStr).trim())) {
+    const d = new Date(dateStr);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  // SQLite format: "2026-09-03 17:44:00" → treat as UTC by appending Z
+  const normalized = String(dateStr).trim().replace(' ', 'T') + 'Z';
+  const d = new Date(normalized);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+// India locale — shows times in whatever timezone the device/browser is set to
+const LOCALE = 'en-IN';
+
 export function formatCurrency(amount) {
   if (amount == null || isNaN(amount)) return '₹0.00';
-  return `₹${Number(amount).toLocaleString('en-IN', {
+  return `₹${Number(amount).toLocaleString(LOCALE, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   })}`;
@@ -12,10 +32,9 @@ export function formatDistance(km) {
 }
 
 export function formatTime(dateStr) {
-  if (!dateStr) return 'N/A';
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return dateStr;
-  return d.toLocaleTimeString('en-IN', {
+  const d = parseUTC(dateStr);
+  if (!d) return 'N/A';
+  return d.toLocaleTimeString(LOCALE, {
     hour: '2-digit',
     minute: '2-digit',
     hour12: true
@@ -23,13 +42,25 @@ export function formatTime(dateStr) {
 }
 
 export function formatDate(dateStr) {
-  if (!dateStr) return 'N/A';
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return dateStr;
-  return d.toLocaleDateString('en-IN', {
+  const d = parseUTC(dateStr);
+  if (!d) return 'N/A';
+  return d.toLocaleDateString(LOCALE, {
     day: '2-digit',
     month: 'short',
     year: 'numeric'
+  });
+}
+
+export function formatDateTime(dateStr) {
+  const d = parseUTC(dateStr);
+  if (!d) return 'N/A';
+  return d.toLocaleString(LOCALE, {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
   });
 }
 
