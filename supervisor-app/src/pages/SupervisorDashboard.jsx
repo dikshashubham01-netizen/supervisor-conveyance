@@ -22,8 +22,13 @@ import {
   LogOut,
   AlertCircle,
   Wifi,
-  WifiOff
+  WifiOff,
+  Sparkles,
+  Download
 } from 'lucide-react';
+import { UpdateModal } from '../components/common/UpdateModal';
+
+const CURRENT_APP_VERSION = '1.0.3';
 
 export function SupervisorDashboard() {
   const { user, logout } = useAuth();
@@ -32,6 +37,28 @@ export function SupervisorDashboard() {
 
   const [viewState, setViewState] = useState('dashboard'); // 'dashboard' | 'start' | 'end' | 'history'
   const [isServerModalOpen, setIsServerModalOpen] = useState(false);
+  const [remoteVersionInfo, setRemoteVersionInfo] = useState(null);
+  const [hasUpdate, setHasUpdate] = useState(false);
+  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
+
+  // Check for app updates
+  useEffect(() => {
+    async function checkForUpdates() {
+      try {
+        const res = await fetch(`https://supervisor-conveyance.vercel.app/version.json?t=${Date.now()}`);
+        if (res.ok) {
+          const data = await res.json();
+          setRemoteVersionInfo(data);
+          if (data.version && data.version !== CURRENT_APP_VERSION) {
+            setHasUpdate(true);
+          }
+        }
+      } catch (e) {
+        console.warn('Update check failed:', e);
+      }
+    }
+    checkForUpdates();
+  }, []);
 
   // High-accuracy background GPS tracking
   const { currentPosition, error: gpsError } = useGeolocation(isOnDuty, activeDuty?.id);
@@ -105,6 +132,25 @@ export function SupervisorDashboard() {
           </button>
         </div>
       </div>
+
+      {/* In-App Update Available Banner */}
+      {hasUpdate && (
+        <div
+          onClick={() => setIsUpdateModalOpen(true)}
+          className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 text-white flex items-center justify-between cursor-pointer shadow-xl shadow-emerald-950/70 active:scale-98 transition animate-pulse border border-emerald-400/40"
+        >
+          <div className="flex items-center gap-2.5">
+            <span className="text-xl">🚀</span>
+            <div>
+              <strong className="block font-bold text-xs text-white">New App Update ({remoteVersionInfo?.version || 'v1.0.3'})</strong>
+              <span className="text-[10px] text-emerald-100">Tap here to install background GPS tracking update</span>
+            </div>
+          </div>
+          <span className="px-2.5 py-1 rounded-xl bg-white text-emerald-800 text-[11px] font-black shadow">
+            UPDATE
+          </span>
+        </div>
+      )}
 
       {/* Sync Status Banner */}
       <div className="flex items-center justify-between px-3.5 py-2 bg-slate-900/80 rounded-2xl border border-slate-800/80 text-xs">
@@ -248,29 +294,49 @@ export function SupervisorDashboard() {
       )}
 
       {/* Bottom Nav / Actions */}
-      <div className="grid grid-cols-2 gap-3 pt-2">
+      <div className="grid grid-cols-3 gap-2 pt-2">
         <button
           type="button"
           onClick={() => setViewState('history')}
-          className="py-3 px-4 rounded-2xl bg-slate-900 border border-slate-800 text-slate-300 font-bold text-xs flex items-center justify-center gap-2 shadow"
+          className="py-3 px-2 rounded-2xl bg-slate-900 border border-slate-800 text-slate-300 font-bold text-xs flex flex-col items-center justify-center gap-1 shadow"
         >
           <History className="w-4 h-4 text-brand-400" />
-          <span>My History</span>
+          <span>History</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setIsUpdateModalOpen(true)}
+          className={`py-3 px-2 rounded-2xl border text-xs font-bold flex flex-col items-center justify-center gap-1 shadow transition ${
+            hasUpdate
+              ? 'bg-emerald-950 border-emerald-500 text-emerald-300 animate-pulse'
+              : 'bg-slate-900 border-slate-800 text-slate-300'
+          }`}
+        >
+          <Download className="w-4 h-4 text-emerald-400" />
+          <span>Update App</span>
         </button>
 
         <button
           type="button"
           onClick={() => setIsServerModalOpen(true)}
-          className="py-3 px-4 rounded-2xl bg-slate-900 border border-slate-800 text-slate-300 font-bold text-xs flex items-center justify-center gap-2 shadow"
+          className="py-3 px-2 rounded-2xl bg-slate-900 border border-slate-800 text-slate-300 font-bold text-xs flex flex-col items-center justify-center gap-1 shadow"
         >
-          <Settings className="w-4 h-4 text-emerald-400" />
-          <span>Server Settings</span>
+          <Settings className="w-4 h-4 text-slate-400" />
+          <span>Settings</span>
         </button>
       </div>
 
       <ServerConfigModal
         isOpen={isServerModalOpen}
         onClose={() => setIsServerModalOpen(false)}
+      />
+
+      <UpdateModal
+        isOpen={isUpdateModalOpen}
+        onClose={() => setIsUpdateModalOpen(false)}
+        currentVersion={CURRENT_APP_VERSION}
+        remoteInfo={remoteVersionInfo}
       />
     </div>
   );

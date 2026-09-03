@@ -87,39 +87,6 @@ export function LiveMapPage() {
                       {sup.isStale ? '⚠️ STALE GPS' : '🟢 TRACKING'}
                     </span>
                   </div>
-
-                  <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-slate-800/80">
-                    <div>
-                      <span className="text-slate-400 block text-[10px]">Start Time</span>
-                      <strong className="text-slate-200 font-mono">{formatTime(sup.start_time)}</strong>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block text-[10px]">Start KM</span>
-                      <strong className="text-slate-200 font-mono">{sup.start_km ?? 'N/A'}</strong>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block text-[10px]">GPS Distance</span>
-                      <strong className="text-emerald-400 font-mono">{formatDistance(sup.gps_distance_km)}</strong>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block text-[10px]">Conveyance</span>
-                      <strong className="text-brand-400 font-mono">{formatCurrency(sup.currentConveyance)}</strong>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between pt-1 text-[11px] text-slate-400">
-                    <span>Accuracy: ±{Math.round(sup.lastLocation?.accuracy || 10)}m</span>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setInspectSessionId(sup.duty_session_id);
-                      }}
-                      className="text-brand-400 hover:text-brand-300 font-medium underline"
-                    >
-                      Inspect Session
-                    </button>
-                  </div>
                 </div>
               );
             })

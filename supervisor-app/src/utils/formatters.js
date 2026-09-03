@@ -1,26 +1,24 @@
-// ─── Time Parsing ────────────────────────────────────────────────────────────
-// SQLite stores timestamps as "YYYY-MM-DD HH:MM:SS" (UTC, no Z suffix).
-// Browsers parse strings without timezone info as LOCAL time — wrong!
-// We force UTC parse then let toLocaleString() convert to user's local timezone.
+// ─── Time Parsing & Formatting (IST / Local Timezone Safe) ─────────────────────
+// SQLite stores timestamps as "YYYY-MM-DD HH:MM:SS" (UTC without 'Z').
+// We parse as UTC then extract local getHours/getMinutes/getDate for 100% reliable local time.
 function parseUTC(dateStr) {
   if (!dateStr) return null;
-  // Already has timezone marker (Z, +, -)
-  if (/[Z+\-]\d*$/.test(String(dateStr).trim())) {
-    const d = new Date(dateStr);
+  if (dateStr instanceof Date) return isNaN(dateStr.getTime()) ? null : dateStr;
+  const s = String(dateStr).trim();
+  if (/[Z+\-]\d*$/.test(s)) {
+    const d = new Date(s);
     return isNaN(d.getTime()) ? null : d;
   }
-  // SQLite format: "2026-09-03 17:44:00" → treat as UTC by appending Z
-  const normalized = String(dateStr).trim().replace(' ', 'T') + 'Z';
+  const normalized = s.replace(' ', 'T') + 'Z';
   const d = new Date(normalized);
   return isNaN(d.getTime()) ? null : d;
 }
 
-// India locale — shows times in whatever timezone the device/browser is set to
-const LOCALE = 'en-IN';
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 export function formatCurrency(amount) {
   if (amount == null || isNaN(amount)) return '₹0.00';
-  return `₹${Number(amount).toLocaleString(LOCALE, {
+  return `₹${Number(amount).toLocaleString('en-IN', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   })}`;
@@ -34,34 +32,28 @@ export function formatDistance(km) {
 export function formatTime(dateStr) {
   const d = parseUTC(dateStr);
   if (!d) return 'N/A';
-  return d.toLocaleTimeString(LOCALE, {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true
-  });
+  let hours = d.getHours();
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  const ampm = hours >= 12 ? 'pm' : 'am';
+  hours = hours % 12;
+  hours = hours ? hours : 12;
+  const formattedHours = String(hours).padStart(2, '0');
+  return `${formattedHours}:${minutes} ${ampm}`;
 }
 
 export function formatDate(dateStr) {
   const d = parseUTC(dateStr);
   if (!d) return 'N/A';
-  return d.toLocaleDateString(LOCALE, {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric'
-  });
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = MONTHS[d.getMonth()];
+  const year = d.getFullYear();
+  return `${day} ${month} ${year}`;
 }
 
 export function formatDateTime(dateStr) {
   const d = parseUTC(dateStr);
   if (!d) return 'N/A';
-  return d.toLocaleString(LOCALE, {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true
-  });
+  return `${formatDate(dateStr)} ${formatTime(dateStr)}`;
 }
 
 export function getStatusBadge(status) {
