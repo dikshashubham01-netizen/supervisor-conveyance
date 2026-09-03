@@ -3,7 +3,8 @@ import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { config } from './config/index.js';
-import { initDatabase } from './db/database.js';
+import { initDatabase, db } from './db/database.js';
+import { seed } from './db/seed.js';
 
 import authRoutes from './routes/authRoutes.js';
 import supervisorRoutes from './routes/supervisorRoutes.js';
@@ -19,6 +20,17 @@ const __dirname = path.dirname(__filename);
 
 // Initialize SQLite database
 initDatabase();
+
+// Auto-seed initial admin and demo data if database is fresh/empty
+try {
+  const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get()?.count || 0;
+  if (userCount === 0) {
+    console.log('📦 Database is empty. Auto-seeding initial users and demo data...');
+    await seed();
+  }
+} catch (seedErr) {
+  console.error('Error checking/running auto-seed:', seedErr);
+}
 
 const app = express();
 
