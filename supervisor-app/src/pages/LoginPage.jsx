@@ -1,7 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { api } from '../api/client';
 import { ServerConfigModal } from '../components/common/ServerConfigModal';
-import { Navigation, User, Lock, ArrowRight, Settings, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { UpdateModal } from '../components/common/UpdateModal';
+import { Navigation, User, Lock, ArrowRight, Settings, AlertCircle, Eye, EyeOff, Sparkles, RefreshCw, ArrowUpCircle } from 'lucide-react';
+
+const CURRENT_APP_VERSION = '1.0.1';
 
 export function LoginPage() {
   const { login } = useAuth();
@@ -10,7 +14,39 @@ export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  // Modals
   const [isServerModalOpen, setIsServerModalOpen] = useState(false);
+  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
+
+  // Version & Updates
+  const [remoteVersionInfo, setRemoteVersionInfo] = useState(null);
+  const [hasUpdate, setHasUpdate] = useState(false);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+
+  // Auto-check for updates on component mount
+  const checkUpdates = async (openModalOnFinish = false) => {
+    setCheckingUpdate(true);
+    try {
+      const info = await api.version.check();
+      if (info) {
+        setRemoteVersionInfo(info);
+        const isNew = info.version && info.version !== CURRENT_APP_VERSION;
+        setHasUpdate(isNew);
+        if (openModalOnFinish) {
+          setIsUpdateModalOpen(true);
+        }
+      }
+    } catch (err) {
+      console.warn('Update check warning:', err);
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
+
+  useEffect(() => {
+    checkUpdates(false);
+  }, []);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -37,18 +73,67 @@ export function LoginPage() {
           <span className="font-bold text-sm tracking-tight text-white">GeoConvey</span>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setIsServerModalOpen(true)}
-          className="p-2 rounded-xl bg-[#1e293b] border border-[#334155] text-[#94a3b8] active:opacity-70"
-          title="Server Settings"
-        >
-          <Settings className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Version / Update Pill Button */}
+          <button
+            type="button"
+            onClick={() => setIsUpdateModalOpen(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-mono transition active:scale-95 shadow-sm"
+            style={{
+              backgroundColor: hasUpdate ? '#064e3b' : '#1e293b',
+              border: `1px solid ${hasUpdate ? '#10b981' : '#334155'}`,
+              color: hasUpdate ? '#a7f3d0' : '#94a3b8'
+            }}
+            title="Check App Version & Updates"
+          >
+            {hasUpdate ? (
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            ) : (
+              <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+            )}
+            <span>v{CURRENT_APP_VERSION}</span>
+            {hasUpdate && <span className="font-bold text-emerald-300">Update!</span>}
+          </button>
+
+          {/* Server Settings */}
+          <button
+            type="button"
+            onClick={() => setIsServerModalOpen(true)}
+            className="p-2 rounded-xl bg-[#1e293b] border border-[#334155] text-[#94a3b8] active:opacity-70"
+            title="Server Settings"
+          >
+            <Settings className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* Main Login Card */}
-      <div className="w-full max-w-sm mx-auto my-auto flex flex-col gap-6 z-10">
+      <div className="w-full max-w-sm mx-auto my-auto flex flex-col gap-4 z-10">
+        {/* Automatic Update Alert Banner if update is available */}
+        {hasUpdate && (
+          <button
+            type="button"
+            onClick={() => setIsUpdateModalOpen(true)}
+            className="p-3 rounded-2xl flex items-center justify-between text-xs transition active:scale-95 shadow-lg"
+            style={{
+              background: 'linear-gradient(to right, #047857, #065f46)',
+              border: '1px solid #34d399',
+              color: '#ffffff'
+            }}
+          >
+            <div className="flex items-center gap-2">
+              <ArrowUpCircle className="w-5 h-5 text-emerald-200 shrink-0" />
+              <div className="text-left">
+                <strong className="block font-bold">New Update Available!</strong>
+                <span className="text-[11px] text-emerald-100 font-mono">v{remoteVersionInfo?.version || '1.0.1'} is ready</span>
+              </div>
+            </div>
+            <span className="text-[11px] font-bold underline bg-emerald-950/60 px-2 py-1 rounded-lg">
+              Update Now &rarr;
+            </span>
+          </button>
+        )}
+
         <div className="text-center">
           <h1 className="text-2xl font-black text-white tracking-tight">Supervisor Portal</h1>
           <p className="text-xs text-[#94a3b8] mt-1">Attendance, Bike Odometer & GPS Tracking</p>
@@ -114,7 +199,7 @@ export function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="mt-1 w-full py-3.5 px-4 rounded-xl font-bold text-sm text-white flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50"
+              className="mt-1 w-full py-3.5 px-4 rounded-xl font-bold text-sm text-white flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50 shadow-lg shadow-emerald-950/80"
               style={{ background: loading ? '#166534' : 'linear-gradient(to right, #16a34a, #15803d)' }}
             >
               <span>{loading ? 'Signing In...' : 'Sign In'}</span>
@@ -127,16 +212,39 @@ export function LoginPage() {
             Use the <strong className="text-[#94a3b8]">Employee ID</strong> and <strong className="text-[#94a3b8]">Password</strong> provided by your Admin.
           </div>
         </div>
+
+        {/* Update Option Box under Login Card */}
+        <div className="flex items-center justify-between px-2 text-xs text-[#94a3b8]">
+          <span className="font-mono text-[11px]">App Version: v{CURRENT_APP_VERSION}</span>
+          <button
+            type="button"
+            onClick={() => checkUpdates(true)}
+            disabled={checkingUpdate}
+            className="flex items-center gap-1 text-[11px] text-emerald-400 hover:text-emerald-300 transition underline underline-offset-2"
+          >
+            <RefreshCw className={`w-3 h-3 ${checkingUpdate ? 'animate-spin' : ''}`} />
+            <span>{checkingUpdate ? 'Checking...' : 'Check for Updates'}</span>
+          </button>
+        </div>
       </div>
 
       {/* Footer */}
       <div className="text-center text-[11px] text-[#475569] py-2">
-        GeoConvey Supervisor App • v1.0 • Live Cloud
+        GeoConvey Supervisor App • v{CURRENT_APP_VERSION} • Live Cloud
       </div>
 
+      {/* Server Config Modal */}
       <ServerConfigModal
         isOpen={isServerModalOpen}
         onClose={() => setIsServerModalOpen(false)}
+      />
+
+      {/* In-App Update Modal */}
+      <UpdateModal
+        isOpen={isUpdateModalOpen}
+        onClose={() => setIsUpdateModalOpen(false)}
+        currentVersion={CURRENT_APP_VERSION}
+        remoteInfo={remoteVersionInfo}
       />
     </div>
   );

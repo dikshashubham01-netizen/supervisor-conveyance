@@ -14,6 +14,7 @@ import reportRoutes from './routes/reportRoutes.js';
 import settingsRoutes from './routes/settingsRoutes.js';
 import auditRoutes from './routes/auditRoutes.js';
 import ocrRoutes from './routes/ocrRoutes.js';
+import appVersionRoutes from './routes/appVersionRoutes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -47,6 +48,7 @@ app.use('/api/reports', reportRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/ocr', ocrRoutes);
+app.use('/api/app', appVersionRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

@@ -94,6 +94,18 @@ export function initDatabase() {
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS app_version (
+      id TEXT PRIMARY KEY,
+      version TEXT NOT NULL,
+      version_code INTEGER NOT NULL,
+      min_supported_version TEXT NOT NULL DEFAULT '1.0.0',
+      apk_url TEXT NOT NULL,
+      download_page_url TEXT NOT NULL,
+      changelog TEXT,
+      release_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE INDEX IF NOT EXISTS idx_duty_sessions_supervisor ON duty_sessions(supervisor_id, status);
     CREATE INDEX IF NOT EXISTS idx_duty_sessions_dates ON duty_sessions(start_time, end_time);
     CREATE INDEX IF NOT EXISTS idx_location_points_session ON location_points(duty_session_id, recorded_at);

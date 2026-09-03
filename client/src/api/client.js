@@ -151,6 +151,15 @@ export const api = {
       })
   },
 
+  appVersion: {
+    get: () => request('/app/version'),
+    update: (data) =>
+      request('/app/version', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      })
+  },
+
   audit: {
     getLogs: (params = {}) => {
       const q = new URLSearchParams(params).toString();
