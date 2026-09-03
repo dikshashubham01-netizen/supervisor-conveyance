@@ -20,50 +20,72 @@ export function DutySessionsPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSessionId, setSelectedSessionId] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(new Date());
 
-  const fetchSessions = async () => {
+  const fetchSessions = async (showSpinner = true) => {
     try {
-      setLoading(true);
+      if (showSpinner) setLoading(true);
       const res = await api.duty.getHistory({
         status: statusFilter || undefined
       });
       setSessions(res.sessions || []);
+      setLastUpdated(new Date());
     } catch (err) {
       console.error('Failed to load sessions:', err);
     } finally {
-      setLoading(false);
+      if (showSpinner) setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchSessions();
+    fetchSessions(true);
+
+    // Auto-refresh every 8 seconds so new duty sessions appear live
+    const timer = setInterval(() => {
+      fetchSessions(false);
+    }, 8000);
+
+    return () => clearInterval(timer);
   }, [statusFilter]);
 
-  const filtered = sessions.filter(
-    (s) =>
-      s.supervisor_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.employee_id.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filtered = sessions.filter((s) => {
+    const term = (searchTerm || '').trim().toLowerCase();
+    if (!term) return true;
+    const name = (s.supervisor_name || '').toLowerCase();
+    const empId = (s.employee_id || '').toLowerCase();
+    return name.includes(term) || empId.includes(term);
+  });
 
   return (
     <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Duty Sessions & Verification</h1>
+          <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-3">
+            <span>Duty Sessions & Verification</span>
+            <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-950 border border-emerald-500/50 text-emerald-300 font-normal flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              Live Auto-Sync
+            </span>
+          </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
             Review attendance selfies, bike odometer readings, GPS routes, and approve conveyance
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={fetchSessions}
-          className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 border border-slate-700 transition"
-          title="Refresh"
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-        </button>
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] text-slate-500 font-mono hidden sm:inline">
+            Updated: {lastUpdated.toLocaleTimeString()}
+          </span>
+          <button
+            type="button"
+            onClick={() => fetchSessions(true)}
+            className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 border border-slate-700 transition"
+            title="Refresh Now"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
       </div>
 
       {/* Filter Tabs & Search */}

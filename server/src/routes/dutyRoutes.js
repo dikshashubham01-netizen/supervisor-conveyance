@@ -338,22 +338,22 @@ router.get('/history', authenticateToken, (req, res) => {
     if (req.user.role === 'supervisor') {
       query += ' AND ds.supervisor_id = ?';
       params.push(req.user.id);
-    } else if (supervisorId) {
+    } else if (supervisorId && supervisorId !== 'undefined' && supervisorId !== 'null') {
       query += ' AND ds.supervisor_id = ?';
       params.push(supervisorId);
     }
 
-    if (status) {
+    if (status && status !== 'undefined' && status !== 'null' && status !== 'ALL') {
       query += ' AND ds.status = ?';
       params.push(status);
     }
 
-    if (startDate) {
+    if (startDate && startDate !== 'undefined' && startDate !== 'null') {
       query += ' AND date(ds.start_time) >= date(?)';
       params.push(startDate);
     }
 
-    if (endDate) {
+    if (endDate && endDate !== 'undefined' && endDate !== 'null') {
       query += ' AND date(ds.start_time) <= date(?)';
       params.push(endDate);
     }

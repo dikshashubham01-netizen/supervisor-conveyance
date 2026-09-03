@@ -14,6 +14,17 @@ export function getToken() {
   return localStorage.getItem('supervisor_token');
 }
 
+export function toQueryString(params = {}) {
+  const clean = {};
+  for (const [key, val] of Object.entries(params)) {
+    if (val !== undefined && val !== null && val !== '' && val !== 'undefined' && val !== 'null') {
+      clean[key] = val;
+    }
+  }
+  const q = new URLSearchParams(clean).toString();
+  return q ? `?${q}` : '';
+}
+
 export function setToken(token) {
   if (token) {
     localStorage.setItem('supervisor_token', token);
@@ -96,8 +107,7 @@ export const api = {
         body: formData
       }),
     getHistory: (params = {}) => {
-      const q = new URLSearchParams(params).toString();
-      return request(`/duty/history${q ? `?${q}` : ''}`);
+      return request(`/duty/history${toQueryString(params)}`);
     },
     getDetails: (id) => request(`/duty/${id}`)
   },

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { api } from '../api/client';
 import { useAuth } from './AuthContext';
+import { startBackgroundTracking, stopBackgroundTracking } from '../utils/backgroundTracking';
 
 const DutyContext = createContext(null);
 
@@ -13,6 +14,7 @@ export function DutyProvider({ children }) {
   const refreshDuty = useCallback(async () => {
     if (!user) {
       setActiveDuty(null);
+      stopBackgroundTracking();
       return;
     }
     try {
@@ -32,6 +34,15 @@ export function DutyProvider({ children }) {
   useEffect(() => {
     refreshDuty();
   }, [refreshDuty]);
+
+  // Sync native Android background location tracking with on-duty state
+  useEffect(() => {
+    if (activeDuty?.id && user?.id) {
+      startBackgroundTracking(activeDuty.id, user.id);
+    } else {
+      stopBackgroundTracking();
+    }
+  }, [activeDuty?.id, user?.id]);
 
   return (
     <DutyContext.Provider

@@ -19,23 +19,23 @@ function getFilteredSessions(queryFilters) {
   `;
   const params = [];
 
-  if (startDate) {
+  if (startDate && startDate !== 'undefined' && startDate !== 'null') {
     query += ' AND date(ds.start_time) >= date(?)';
     params.push(startDate);
   }
-  if (endDate) {
+  if (endDate && endDate !== 'undefined' && endDate !== 'null') {
     query += ' AND date(ds.start_time) <= date(?)';
     params.push(endDate);
   }
-  if (supervisorId) {
+  if (supervisorId && supervisorId !== 'undefined' && supervisorId !== 'null') {
     query += ' AND ds.supervisor_id = ?';
     params.push(supervisorId);
   }
-  if (employeeId) {
+  if (employeeId && employeeId !== 'undefined' && employeeId !== 'null') {
     query += ' AND u.employee_id LIKE ?';
     params.push(`%${employeeId.trim()}%`);
   }
-  if (status && status !== 'ALL') {
+  if (status && status !== 'ALL' && status !== 'undefined' && status !== 'null') {
     query += ' AND ds.status = ?';
     params.push(status);
   }

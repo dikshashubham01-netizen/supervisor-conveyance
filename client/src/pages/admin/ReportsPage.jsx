@@ -26,14 +26,16 @@ export function ReportsPage() {
   const [employeeId, setEmployeeId] = useState('');
   const [status, setStatus] = useState('ALL');
 
+  const [lastRefreshed, setLastRefreshed] = useState(new Date());
+
   useEffect(() => {
     // Load supervisors for filter dropdown
     api.supervisors.list().then((res) => setSupervisors(res.supervisors || [])).catch(() => {});
   }, []);
 
-  const fetchReports = async () => {
+  const fetchReports = async (showSpinner = true) => {
     try {
-      setLoading(true);
+      if (showSpinner) setLoading(true);
       const res = await api.reports.get({
         startDate: startDate || undefined,
         endDate: endDate || undefined,
@@ -44,15 +46,23 @@ export function ReportsPage() {
 
       setReportRows(res.reportRows || []);
       setTotals(res.totals || { totalApprovedKm: 0, totalConveyance: 0 });
+      setLastRefreshed(new Date());
     } catch (err) {
       console.error('Failed to load reports:', err);
     } finally {
-      setLoading(false);
+      if (showSpinner) setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchReports();
+    fetchReports(true);
+
+    // Auto-refresh reports every 10 seconds
+    const interval = setInterval(() => {
+      fetchReports(false);
+    }, 10000);
+
+    return () => clearInterval(interval);
   }, [startDate, endDate, supervisorId, status]);
 
   // Download links
@@ -100,21 +110,36 @@ export function ReportsPage() {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Daily Conveyance Reports</h1>
+          <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-3">
+            <span>Daily Conveyance Reports</span>
+            <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-950 border border-emerald-500/50 text-emerald-300 font-normal flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              Live Auto-Sync
+            </span>
+          </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
             Filter, verify, and export official 13-column conveyance audit records
           </p>
         </div>
 
-        {/* Export Buttons (Specification 20) */}
-        <div className="flex items-center gap-3">
+        {/* Export Buttons & Refresh */}
+        <div className="flex items-center gap-2 sm:gap-3">
+          <button
+            type="button"
+            onClick={() => fetchReports(true)}
+            className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 border border-slate-700 transition"
+            title="Refresh Reports"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+
           <button
             type="button"
             onClick={handleExportCsv}
-            className="flex items-center gap-2 py-2 px-3.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition"
+            className="flex items-center gap-2 py-2 px-3.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-semibold border border-slate-700 transition"
           >
             <FileText className="w-4 h-4 text-emerald-400" />
-            <span>Export CSV</span>
+            <span className="hidden sm:inline">Export CSV</span>
           </button>
 
           <button

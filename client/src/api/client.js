@@ -20,6 +20,17 @@ export function setToken(token) {
   }
 }
 
+export function toQueryString(params = {}) {
+  const clean = {};
+  for (const [key, val] of Object.entries(params)) {
+    if (val !== undefined && val !== null && val !== '' && val !== 'undefined' && val !== 'null') {
+      clean[key] = val;
+    }
+  }
+  const q = new URLSearchParams(clean).toString();
+  return q ? `?${q}` : '';
+}
+
 async function request(endpoint, options = {}) {
   const headers = options.headers || {};
   const token = getToken();
@@ -105,8 +116,7 @@ export const api = {
         body: formData
       }),
     getHistory: (params = {}) => {
-      const q = new URLSearchParams(params).toString();
-      return request(`/duty/history${q ? `?${q}` : ''}`);
+      return request(`/duty/history${toQueryString(params)}`);
     },
     getDetails: (id) => request(`/duty/${id}`),
     verify: (id, data) =>
@@ -129,16 +139,13 @@ export const api = {
 
   reports: {
     get: (params = {}) => {
-      const q = new URLSearchParams(params).toString();
-      return request(`/reports${q ? `?${q}` : ''}`);
+      return request(`/reports${toQueryString(params)}`);
     },
     getCsvUrl: (params = {}) => {
-      const q = new URLSearchParams(params).toString();
-      return `${API_BASE}/reports/export/csv${q ? `?${q}` : ''}`;
+      return `${API_BASE}/reports/export/csv${toQueryString(params)}`;
     },
     getExcelUrl: (params = {}) => {
-      const q = new URLSearchParams(params).toString();
-      return `${API_BASE}/reports/export/excel${q ? `?${q}` : ''}`;
+      return `${API_BASE}/reports/export/excel${toQueryString(params)}`;
     }
   },
 
@@ -162,8 +169,7 @@ export const api = {
 
   audit: {
     getLogs: (params = {}) => {
-      const q = new URLSearchParams(params).toString();
-      return request(`/audit${q ? `?${q}` : ''}`);
+      return request(`/audit${toQueryString(params)}`);
     }
   },
 
