@@ -1,6 +1,5 @@
-const DEFAULT_SERVER_URL = (typeof window !== 'undefined' && window.location.hostname !== 'localhost')
-  ? `${window.location.protocol}//${window.location.hostname}:5000`
-  : 'http://localhost:5000';
+// Live production backend — always use Render unless admin manually overrides via Settings
+const DEFAULT_SERVER_URL = 'https://supervisor-api-vvba.onrender.com';
 
 export function getServerUrl() {
   return localStorage.getItem('geoconvey_server_url') || DEFAULT_SERVER_URL;

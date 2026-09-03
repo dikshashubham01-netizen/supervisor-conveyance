@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { ServerConfigModal } from '../components/common/ServerConfigModal';
-import { Navigation, User, Lock, ArrowRight, Settings, AlertCircle, Sparkles } from 'lucide-react';
+import { Navigation, User, Lock, ArrowRight, Settings, AlertCircle, Eye, EyeOff } from 'lucide-react';
 
 export function LoginPage() {
   const { login } = useAuth();
   const [employeeId, setEmployeeId] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [isServerModalOpen, setIsServerModalOpen] = useState(false);
@@ -17,7 +18,7 @@ export function LoginPage() {
     setLoading(true);
 
     try {
-      await login(employeeId, password);
+      await login(employeeId.trim(), password);
     } catch (err) {
       setError(err.message || 'Login failed. Please verify credentials.');
     } finally {
@@ -25,18 +26,12 @@ export function LoginPage() {
     }
   };
 
-  const fill = (emp, pass) => {
-    setEmployeeId(emp);
-    setPassword(pass);
-    setError(null);
-  };
-
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col justify-between p-5 relative overflow-hidden">
+    <div className="min-h-screen bg-[#0f172a] flex flex-col justify-between p-5 relative overflow-hidden">
       {/* Top Header Bar */}
       <div className="flex items-center justify-between z-10 pt-2">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-brand-600 to-emerald-400 flex items-center justify-center shadow-lg shadow-emerald-950/60">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-green-600 to-emerald-400 flex items-center justify-center shadow-lg">
             <Navigation className="w-4 h-4 text-white" />
           </div>
           <span className="font-bold text-sm tracking-tight text-white">GeoConvey</span>
@@ -45,7 +40,7 @@ export function LoginPage() {
         <button
           type="button"
           onClick={() => setIsServerModalOpen(true)}
-          className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white transition"
+          className="p-2 rounded-xl bg-[#1e293b] border border-[#334155] text-[#94a3b8] active:opacity-70"
           title="Server Settings"
         >
           <Settings className="w-4 h-4" />
@@ -56,93 +51,87 @@ export function LoginPage() {
       <div className="w-full max-w-sm mx-auto my-auto flex flex-col gap-6 z-10">
         <div className="text-center">
           <h1 className="text-2xl font-black text-white tracking-tight">Supervisor Portal</h1>
-          <p className="text-xs text-slate-400 mt-1">Attendance, Bike Odometer & GPS Tracking</p>
+          <p className="text-xs text-[#94a3b8] mt-1">Attendance, Bike Odometer & GPS Tracking</p>
         </div>
 
-        <div className="bg-slate-900/90 rounded-3xl p-6 border border-slate-800/90 shadow-2xl flex flex-col gap-4">
+        <div className="bg-[#1e293b] rounded-3xl p-6 border border-[#334155] shadow-2xl flex flex-col gap-4">
           {error && (
-            <div className="p-3 rounded-xl bg-rose-950/80 border border-rose-500/50 text-rose-300 text-xs flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0" />
+            <div className="p-3 rounded-xl bg-red-950 border border-red-500 text-red-300 text-xs flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-400" />
               <span>{error}</span>
             </div>
           )}
 
-          <form onSubmit={handleLogin} className="flex flex-col gap-3.5 text-xs">
-            <div>
-              <label className="text-slate-300 font-semibold block mb-1">Employee ID</label>
+          <form onSubmit={handleLogin} className="flex flex-col gap-4">
+            {/* Employee ID Field */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[#cbd5e1] font-semibold text-sm">Employee ID</label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-500 pointer-events-none">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-[#64748b] pointer-events-none">
                   <User className="w-4 h-4" />
                 </div>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. EMP001"
+                  placeholder="Enter your Employee ID"
                   value={employeeId}
                   onChange={(e) => setEmployeeId(e.target.value)}
-                  className="w-full bg-slate-850 border border-slate-750 rounded-xl pl-9 pr-3 py-3 text-sm text-white font-mono focus:outline-none focus:border-brand-500"
+                  autoComplete="username"
+                  autoCapitalize="characters"
+                  style={{ backgroundColor: '#0f172a', color: '#ffffff', borderColor: '#475569' }}
+                  className="w-full rounded-xl pl-10 pr-4 py-3 text-sm font-mono focus:outline-none border-2"
                 />
               </div>
             </div>
 
-            <div>
-              <label className="text-slate-300 font-semibold block mb-1">Password</label>
+            {/* Password Field */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[#cbd5e1] font-semibold text-sm">Password</label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-500 pointer-events-none">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-[#64748b] pointer-events-none">
                   <Lock className="w-4 h-4" />
                 </div>
                 <input
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   required
-                  placeholder="••••••••"
+                  placeholder="Enter your password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-slate-850 border border-slate-750 rounded-xl pl-9 pr-3 py-3 text-sm text-white focus:outline-none focus:border-brand-500"
+                  autoComplete="current-password"
+                  style={{ backgroundColor: '#0f172a', color: '#ffffff', borderColor: '#475569' }}
+                  className="w-full rounded-xl pl-10 pr-12 py-3 text-sm focus:outline-none border-2"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-[#64748b] hover:text-[#94a3b8]"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
             </div>
 
             <button
               type="submit"
               disabled={loading}
-              className="mt-2 w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-brand-600 hover:from-emerald-500 hover:to-brand-500 text-white font-bold text-sm shadow-xl shadow-emerald-950/80 active:scale-95 transition flex items-center justify-center gap-2 disabled:opacity-50"
+              className="mt-1 w-full py-3.5 px-4 rounded-xl font-bold text-sm text-white flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50"
+              style={{ background: loading ? '#166534' : 'linear-gradient(to right, #16a34a, #15803d)' }}
             >
-              <span>{loading ? 'Authenticating...' : 'Sign In'}</span>
+              <span>{loading ? 'Signing In...' : 'Sign In'}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
 
-          {/* Quick Demo Fillers */}
-          <div className="pt-3 border-t border-slate-800/80 flex flex-col gap-1.5 text-slate-400">
-            <span className="text-[10px] font-semibold uppercase tracking-wider flex items-center gap-1">
-              <Sparkles className="w-3 h-3 text-amber-400" />
-              Demo Supervisor Logins:
-            </span>
-            <div className="grid grid-cols-2 gap-2 text-[11px]">
-              <button
-                type="button"
-                onClick={() => fill('EMP001', 'supervisor123')}
-                className="p-2 rounded-lg bg-slate-850 hover:bg-slate-800 text-left border border-slate-800"
-              >
-                <span className="font-bold text-emerald-400 block">EMP001</span>
-                <span className="text-[10px] text-slate-500 font-mono">John Doe</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => fill('EMP003', 'supervisor123')}
-                className="p-2 rounded-lg bg-slate-850 hover:bg-slate-800 text-left border border-slate-800"
-              >
-                <span className="font-bold text-blue-400 block">EMP003</span>
-                <span className="text-[10px] text-slate-500 font-mono">Amit Patel</span>
-              </button>
-            </div>
+          {/* Info note */}
+          <div className="pt-3 border-t border-[#334155] text-[11px] text-[#64748b] text-center leading-relaxed">
+            Use the <strong className="text-[#94a3b8]">Employee ID</strong> and <strong className="text-[#94a3b8]">Password</strong> provided by your Admin.
           </div>
         </div>
       </div>
 
       {/* Footer */}
-      <div className="text-center text-[11px] text-slate-600 py-2">
-        GeoConvey Supervisor Native App • v1.0
+      <div className="text-center text-[11px] text-[#475569] py-2">
+        GeoConvey Supervisor App • v1.0 • Live Cloud
       </div>
 
       <ServerConfigModal

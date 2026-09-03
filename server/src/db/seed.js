@@ -92,7 +92,7 @@ export async function ensureAdminAndCleanState() {
   const adminPass = 'Soumya@123';
   const passwordHash = await bcrypt.hash(adminPass, 10);
 
-  // Check if soumya.ghosh@genus.in exists
+  // Ensure admin account exists and is correct
   const existingAdmin = db.prepare('SELECT * FROM users WHERE employee_id = ? COLLATE NOCASE').get(adminEmail);
   if (existingAdmin) {
     db.prepare('UPDATE users SET password_hash = ?, role = "admin", status = "active", name = "Soumya Ghosh" WHERE id = ?').run(passwordHash, existingAdmin.id);
@@ -103,13 +103,16 @@ export async function ensureAdminAndCleanState() {
     `).run(uuidv4(), adminEmail, passwordHash);
   }
 
-  // Remove old demo username 'admin'
+  // Remove old generic demo admin username if it was used
   db.prepare('DELETE FROM users WHERE employee_id = "admin"').run();
 
-  // Clear all demo sessions and demo KM as requested
-  db.prepare('DELETE FROM duty_sessions').run();
-  db.prepare('DELETE FROM location_points').run();
-  db.prepare('DELETE FROM audit_logs').run();
+  // Remove demo supervisor accounts (EMP001, EMP002, EMP003) from seed ONLY if they still exist
+  // Real supervisors created by admin will have different IDs set by admin
+  db.prepare('DELETE FROM users WHERE employee_id IN ("EMP001","EMP002","EMP003") AND role = "supervisor"').run();
+
+  // IMPORTANT: Do NOT delete supervisor accounts created by admin (role=supervisor with non-demo IDs).
+  // Only clean up orphaned duty sessions from demo accounts.
+  // Real duty sessions created by actual supervisors are preserved.
 
   // Ensure default conveyance rate exists
   const rateCount = db.prepare('SELECT COUNT(*) as count FROM conveyance_rates').get()?.count || 0;
@@ -120,8 +123,8 @@ export async function ensureAdminAndCleanState() {
     `).run(uuidv4());
   }
 
-  console.log(`✅ Admin configured: ${adminEmail} / ${adminPass}`);
-  console.log('✅ All demo KM and sessions cleared (clean 0 KM slate).');
+  console.log(`✅ Admin configured: ${adminEmail}`);
+  console.log('✅ Demo accounts cleaned. Admin-created supervisors are preserved.');
 }
 
 if (process.argv[1]?.endsWith('seed.js')) {
