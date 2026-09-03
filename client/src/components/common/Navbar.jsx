@@ -68,6 +68,16 @@ export function Navbar({ onNavigate, currentPage }) {
             )}
           </div>
 
+          {/* Download App Link */}
+          <button
+            type="button"
+            onClick={() => onNavigate && onNavigate('download')}
+            title="Download Supervisor Android APK"
+            className="flex items-center gap-1 text-xs py-1.5 px-3 rounded-xl bg-emerald-950/90 hover:bg-emerald-900 border border-emerald-600/80 text-emerald-300 font-bold transition shadow-sm"
+          >
+            <span>📱 Download App</span>
+          </button>
+
           {/* User badge */}
           {user && (
             <div className="flex items-center gap-2 pl-2 border-l border-slate-800">

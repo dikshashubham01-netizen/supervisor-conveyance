@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { Navigation, Lock, User, Shield, AlertCircle, ArrowRight, Sparkles } from 'lucide-react';
 
-export function LoginPage() {
+export function LoginPage({ onGoToDownload }) {
   const { login } = useAuth();
   const [employeeId, setEmployeeId] = useState('');
   const [password, setPassword] = useState('');
@@ -124,12 +124,23 @@ export function LoginPage() {
             </button>
 
             {/* Notice that Supervisor Login is on Mobile App Only */}
-            <div className="p-2.5 rounded-xl bg-slate-850/80 border border-slate-800 text-[11px] text-slate-400 flex items-start gap-2">
-              <span className="text-sm">📱</span>
-              <div>
-                <strong className="text-slate-300 block">Supervisor Login Notice:</strong>
-                <span>Supervisors can only log in through the <strong>Supervisor Android Mobile App</strong> to record GPS travel & odometers.</span>
+            <div className="p-3 rounded-2xl bg-slate-850/90 border border-slate-750 text-xs text-slate-300 flex flex-col gap-2.5">
+              <div className="flex items-start gap-2">
+                <span className="text-base">📱</span>
+                <div>
+                  <strong className="text-white block font-semibold text-xs">Supervisor Mobile App</strong>
+                  <span className="text-slate-400 text-[11px]">Supervisors must use the Android app to record GPS travel & odometers.</span>
+                </div>
               </div>
+
+              <button
+                type="button"
+                onClick={onGoToDownload || (() => window.location.href = '/download')}
+                className="w-full py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-950/70 flex items-center justify-center gap-2 transition active:scale-95"
+              >
+                <span>Download Android APK (with % tracker)</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
             </div>
           </div>
         </div>

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from './context/AuthContext';
 import { Navbar } from './components/common/Navbar';
 import { LoginPage } from './pages/auth/LoginPage';
+import { DownloadPage } from './pages/DownloadPage';
 
 // Supervisor Pages
 import { SupervisorDashboard } from './pages/supervisor/SupervisorDashboard';
@@ -30,7 +31,31 @@ import {
 
 export default function App() {
   const { user, loading, isAdmin, isSupervisor } = useAuth();
-  const [currentPage, setCurrentPage] = useState('dashboard');
+  const [currentPage, setCurrentPage] = useState(() => {
+    return window.location.pathname.toLowerCase().includes('download') ? 'download' : 'dashboard';
+  });
+
+  // Handle URL changes or popstate
+  React.useEffect(() => {
+    const handleUrlChange = () => {
+      if (window.location.pathname.toLowerCase().includes('download')) {
+        setCurrentPage('download');
+      }
+    };
+    window.addEventListener('popstate', handleUrlChange);
+    return () => window.removeEventListener('popstate', handleUrlChange);
+  }, []);
+
+  if (currentPage === 'download') {
+    return (
+      <DownloadPage
+        onBackToLogin={() => {
+          window.history.pushState({}, '', '/');
+          setCurrentPage('dashboard');
+        }}
+      />
+    );
+  }
 
   if (loading) {
     return (
@@ -42,7 +67,14 @@ export default function App() {
   }
 
   if (!user) {
-    return <LoginPage />;
+    return (
+      <LoginPage
+        onGoToDownload={() => {
+          window.history.pushState({}, '', '/download');
+          setCurrentPage('download');
+        }}
+      />
+    );
   }
 
   return (
