@@ -126,25 +126,13 @@ export function SupervisorsPage() {
     }
   };
 
-  const handleDownloadTemplate = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const res = await fetch(api.supervisors.getTemplateUrl(), {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (!res.ok) throw new Error('Failed to download template');
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'Supervisor_Import_Template.xlsx';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
-    } catch (err) {
-      alert('Error downloading template: ' + err.message);
-    }
+  const handleDownloadTemplate = () => {
+    const a = document.createElement('a');
+    a.href = '/Supervisor_Import_Template.xlsx';
+    a.download = 'Supervisor_Import_Template.xlsx';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   };
 
   const openBulkModal = () => {
