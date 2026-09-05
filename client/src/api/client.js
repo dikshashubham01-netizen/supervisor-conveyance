@@ -100,7 +100,13 @@ export const api = {
     delete: (id) =>
       request(`/supervisors/${id}`, {
         method: 'DELETE'
-      })
+      }),
+    bulkUpload: (formData) =>
+      request('/supervisors/bulk-upload', {
+        method: 'POST',
+        body: formData
+      }),
+    getTemplateUrl: () => `${API_BASE}/supervisors/template`
   },
 
   duty: {

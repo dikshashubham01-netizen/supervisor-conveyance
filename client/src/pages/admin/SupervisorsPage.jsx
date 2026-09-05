@@ -13,7 +13,11 @@ import {
   Phone,
   Key,
   Shield,
-  RefreshCw
+  RefreshCw,
+  FileSpreadsheet,
+  Upload,
+  Download,
+  AlertCircle
 } from 'lucide-react';
 
 export function SupervisorsPage() {
@@ -33,6 +37,13 @@ export function SupervisorsPage() {
   });
   const [modalSubmitting, setModalSubmitting] = useState(false);
   const [modalError, setModalError] = useState(null);
+
+  // Bulk Excel Upload Modal State
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [bulkFile, setBulkFile] = useState(null);
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkResult, setBulkResult] = useState(null);
+  const [bulkError, setBulkError] = useState(null);
 
   const fetchSupervisors = async () => {
     try {
@@ -115,6 +126,56 @@ export function SupervisorsPage() {
     }
   };
 
+  const handleDownloadTemplate = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(api.supervisors.getTemplateUrl(), {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('Failed to download template');
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'Supervisor_Import_Template.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      alert('Error downloading template: ' + err.message);
+    }
+  };
+
+  const openBulkModal = () => {
+    setBulkFile(null);
+    setBulkResult(null);
+    setBulkError(null);
+    setIsBulkModalOpen(true);
+  };
+
+  const handleBulkUpload = async (e) => {
+    e.preventDefault();
+    if (!bulkFile) {
+      setBulkError('Please select an Excel or CSV file to upload');
+      return;
+    }
+
+    try {
+      setBulkLoading(true);
+      setBulkError(null);
+      const fd = new FormData();
+      fd.append('file', bulkFile);
+      const res = await api.supervisors.bulkUpload(fd);
+      setBulkResult(res);
+      fetchSupervisors();
+    } catch (err) {
+      setBulkError(err.message || 'Failed to upload file');
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
   const filtered = supervisors.filter(
     (s) =>
       s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -133,7 +194,7 @@ export function SupervisorsPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <button
             type="button"
             onClick={fetchSupervisors}
@@ -142,10 +203,31 @@ export function SupervisorsPage() {
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
+
+          <button
+            type="button"
+            onClick={handleDownloadTemplate}
+            className="flex items-center gap-2 py-2.5 px-3.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-semibold border border-slate-700 transition"
+            title="Download Excel Template"
+          >
+            <Download className="w-4 h-4 text-brand-400" />
+            <span className="hidden sm:inline">Download Template</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={openBulkModal}
+            className="flex items-center gap-2 py-2.5 px-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-lg shadow-blue-950 transition"
+            title="Bulk Import Excel"
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            <span>Import Excel</span>
+          </button>
+
           <button
             type="button"
             onClick={openCreateModal}
-            className="flex items-center gap-2 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm shadow-lg shadow-emerald-950 transition"
+            className="flex items-center gap-2 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs sm:text-sm shadow-lg shadow-emerald-950 transition"
           >
             <UserPlus className="w-4 h-4" />
             <span>Add Supervisor</span>
@@ -349,6 +431,161 @@ export function SupervisorsPage() {
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* Bulk Upload Modal */}
+      <Modal
+        isOpen={isBulkModalOpen}
+        onClose={() => {
+          setIsBulkModalOpen(false);
+          setBulkResult(null);
+          setBulkFile(null);
+        }}
+        title="Bulk Register Supervisors via Excel"
+        maxWidth="max-w-lg"
+      >
+        <div className="flex flex-col gap-4 text-slate-200 text-xs">
+          {/* Informational banner */}
+          <div className="p-3.5 rounded-xl bg-slate-800/80 border border-slate-700/80 flex flex-col gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-1">
+              <span className="font-semibold text-white flex items-center gap-1.5">
+                <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+                Excel Template Required Format
+              </span>
+              <button
+                type="button"
+                onClick={handleDownloadTemplate}
+                className="text-brand-400 hover:text-brand-300 font-bold flex items-center gap-1 text-[11px] underline"
+              >
+                <Download className="w-3 h-3" />
+                Download Sample Template (.xlsx)
+              </button>
+            </div>
+            <p className="text-slate-400 text-[11px] leading-relaxed">
+              Your Excel file should have these 4 columns: <br />
+              <strong className="text-slate-200">Employee ID</strong>, <strong className="text-slate-200">Full Name</strong>, <strong className="text-slate-200">Phone Number</strong>, <strong className="text-slate-200">Password</strong>.
+            </p>
+          </div>
+
+          {bulkError && (
+            <div className="p-3 rounded-xl bg-rose-950/80 border border-rose-500/50 text-rose-300 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+              <span>{bulkError}</span>
+            </div>
+          )}
+
+          {/* Success / Result Summary */}
+          {bulkResult ? (
+            <div className="flex flex-col gap-3 py-2">
+              <div className="p-4 rounded-xl bg-emerald-950/80 border border-emerald-500/50 flex items-start gap-3">
+                <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="font-bold text-white text-sm">
+                    Import Completed: {bulkResult.createdCount} IDs Created
+                  </h4>
+                  <p className="text-slate-300 text-[11px] mt-1">
+                    {bulkResult.skippedCount > 0
+                      ? `${bulkResult.skippedCount} rows skipped (e.g. already registered or missing details).`
+                      : 'All supervisor records successfully registered in Supabase!'}
+                  </p>
+                </div>
+              </div>
+
+              {/* List of created */}
+              {bulkResult.created && bulkResult.created.length > 0 && (
+                <div className="max-h-36 overflow-y-auto bg-slate-900/90 rounded-xl p-3 border border-slate-800 font-mono text-[11px] flex flex-col gap-1">
+                  <span className="text-emerald-400 font-bold font-sans text-xs">Successfully Added:</span>
+                  {bulkResult.created.map((item, idx) => (
+                    <div key={idx} className="text-slate-300 flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                      {item}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* List of skipped */}
+              {bulkResult.skipped && bulkResult.skipped.length > 0 && (
+                <div className="max-h-36 overflow-y-auto bg-slate-900/90 rounded-xl p-3 border border-slate-800 font-mono text-[11px] flex flex-col gap-1">
+                  <span className="text-amber-400 font-bold font-sans text-xs">Skipped Records:</span>
+                  {bulkResult.skipped.map((item, idx) => (
+                    <div key={idx} className="text-slate-400 flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                      {item}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsBulkModalOpen(false);
+                  setBulkResult(null);
+                  setBulkFile(null);
+                }}
+                className="w-full mt-2 py-2.5 px-4 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-500 transition"
+              >
+                Done & View Supervisors
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={handleBulkUpload} className="flex flex-col gap-4">
+              {/* Drag / File selector */}
+              <div className="relative border-2 border-dashed border-slate-700 hover:border-emerald-500/60 rounded-2xl p-6 text-center transition bg-slate-900/50 flex flex-col items-center justify-center gap-2 cursor-pointer">
+                <input
+                  type="file"
+                  accept=".xlsx, .xls, .csv"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      setBulkFile(e.target.files[0]);
+                      setBulkError(null);
+                    }
+                  }}
+                  className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                />
+                <div className="w-12 h-12 rounded-full bg-emerald-950/60 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                  <Upload className="w-6 h-6" />
+                </div>
+                <div>
+                  <span className="text-sm font-semibold text-white block">
+                    {bulkFile ? bulkFile.name : 'Click to select Excel (.xlsx, .csv) file'}
+                  </span>
+                  <span className="text-[11px] text-slate-400 mt-0.5 block">
+                    {bulkFile ? `${(bulkFile.size / 1024).toFixed(1)} KB` : 'or drag and drop your spreadsheet here'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsBulkModalOpen(false)}
+                  className="py-2.5 px-4 rounded-xl border border-slate-700 bg-slate-800 text-slate-300 font-semibold hover:bg-slate-750"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!bulkFile || bulkLoading}
+                  className="py-2.5 px-4 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-500 transition disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-blue-950"
+                >
+                  {bulkLoading ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Importing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <FileSpreadsheet className="w-4 h-4" />
+                      <span>Upload & Create IDs</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
       </Modal>
     </div>
   );
