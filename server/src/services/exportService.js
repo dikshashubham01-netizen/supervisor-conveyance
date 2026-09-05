@@ -6,23 +6,46 @@ import * as XLSX from 'xlsx';
  */
 export function formatReportRows(sessions) {
   return sessions.map((s) => {
-    const startDate = s.start_time ? s.start_time.split(' ')[0] : 'N/A';
-    const startTime = s.start_time ? s.start_time.split(' ')[1] || s.start_time : 'N/A';
-    const endTime = s.end_time ? s.end_time.split(' ')[1] || s.end_time : 'In Progress';
+    const formatTimestamp = (ts) => {
+      if (!ts) return { date: 'N/A', time: 'N/A' };
+      const d = ts instanceof Date ? ts : new Date(ts);
+      if (isNaN(d.getTime())) {
+        const str = String(ts);
+        const parts = str.split(' ');
+        return { date: parts[0] || str, time: parts[1] || '' };
+      }
+      const dateStr = d.toLocaleDateString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      });
+      const timeStr = d.toLocaleTimeString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+      });
+      return { date: dateStr, time: timeStr };
+    };
+
+    const startFormatted = formatTimestamp(s.start_time);
+    const endFormatted = s.end_time ? formatTimestamp(s.end_time) : { date: '', time: 'In Progress' };
 
     return {
-      'Date': startDate,
+      'Date': startFormatted.date,
       'Supervisor': s.supervisor_name || s.name || 'Unknown',
       'Employee ID': s.employee_id || 'N/A',
-      'Start Time': startTime,
-      'End Time': endTime,
+      'Start Time': startFormatted.time,
+      'End Time': endFormatted.time,
       'Start KM': s.start_odometer_final != null ? s.start_odometer_final : 'N/A',
       'End KM': s.end_odometer_final != null ? s.end_odometer_final : 'N/A',
-      'GPS KM': s.gps_distance_km != null ? s.gps_distance_km.toFixed(2) : '0.00',
-      'Odometer KM': s.odometer_distance_km != null ? s.odometer_distance_km.toFixed(2) : '0.00',
-      'Approved KM': s.approved_distance_km != null ? s.approved_distance_km.toFixed(2) : '0.00',
-      'Rate': s.conveyance_rate != null ? `₹${s.conveyance_rate.toFixed(2)}` : 'N/A',
-      'Conveyance': s.conveyance_amount != null ? `₹${s.conveyance_amount.toFixed(2)}` : '₹0.00',
+      'GPS KM': s.gps_distance_km != null ? Number(s.gps_distance_km).toFixed(2) : '0.00',
+      'Odometer KM': s.odometer_distance_km != null ? Number(s.odometer_distance_km).toFixed(2) : '0.00',
+      'Approved KM': s.approved_distance_km != null ? Number(s.approved_distance_km).toFixed(2) : '0.00',
+      'Rate': s.conveyance_rate != null ? `₹${Number(s.conveyance_rate).toFixed(2)}` : 'N/A',
+      'Conveyance': s.conveyance_amount != null ? `₹${Number(s.conveyance_amount).toFixed(2)}` : '₹0.00',
       'Status': s.status
     };
   });
