@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: supervisor-api
+    env: node
+    buildCommand: cd server && npm install
+    startCommand: node --experimental-vm-modules server/src/index.js
+    disk:
+      name: conveyance-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: JWT_SECRET
+        value: supervisor_conveyance_secret_key_2026_super_secure
