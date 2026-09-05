@@ -20,7 +20,7 @@ export const config = {
   defaultBikeRate: 4.50,
   uploadDir: uploadsDir,
   // PostgreSQL / Supabase connection string
-  databaseUrl: process.env.DATABASE_URL,
+  databaseUrl: process.env.DATABASE_URL || 'postgresql://postgres:Shubham%40003@db.bjvmdztpllbjizlefjdb.supabase.co:5432/postgres',
   gps: {
     maxSpeedKmh: 120,
     maxAccuracyMeters: 100,
