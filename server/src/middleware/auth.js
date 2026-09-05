@@ -10,19 +10,28 @@ export function authenticateToken(req, res, next) {
     return res.status(401).json({ error: 'Access token required' });
   }
 
-  jwt.verify(token, config.jwtSecret, (err, user) => {
+  jwt.verify(token, config.jwtSecret, async (err, user) => {
     if (err) {
       return res.status(403).json({ error: 'Invalid or expired session token' });
     }
 
-    // Verify user exists and is active
-    const dbUser = db.prepare('SELECT id, employee_id, name, role, status FROM users WHERE id = ?').get(user.id);
-    if (!dbUser || dbUser.status !== 'active') {
-      return res.status(403).json({ error: 'User account not found or inactive' });
-    }
+    try {
+      // Verify user exists and is active in PostgreSQL
+      const dbUser = await db.queryOne(
+        'SELECT id, employee_id, name, role, status FROM users WHERE id = $1',
+        [user.id]
+      );
 
-    req.user = dbUser;
-    next();
+      if (!dbUser || dbUser.status !== 'active') {
+        return res.status(403).json({ error: 'User account not found or inactive' });
+      }
+
+      req.user = dbUser;
+      next();
+    } catch (dbErr) {
+      console.error('Auth DB error:', dbErr);
+      return res.status(500).json({ error: 'Authentication database error' });
+    }
   });
 }
 

@@ -11,25 +11,20 @@ const router = express.Router();
 router.post('/login', async (req, res) => {
   try {
     const { employee_id, password } = req.body;
-
     if (!employee_id || !password) {
       return res.status(400).json({ error: 'Employee ID and password are required' });
     }
 
-    const user = db.prepare('SELECT * FROM users WHERE employee_id = ? COLLATE NOCASE').get(employee_id.trim());
+    const user = await db.queryOne(
+      'SELECT * FROM users WHERE LOWER(employee_id) = LOWER($1)',
+      [employee_id.trim()]
+    );
 
-    if (!user) {
-      return res.status(401).json({ error: 'Invalid Employee ID or password' });
-    }
-
-    if (user.status !== 'active') {
-      return res.status(403).json({ error: 'Account is deactivated. Please contact admin.' });
-    }
+    if (!user) return res.status(401).json({ error: 'Invalid Employee ID or password' });
+    if (user.status !== 'active') return res.status(403).json({ error: 'Account is deactivated. Please contact admin.' });
 
     const validPassword = await bcrypt.compare(password, user.password_hash);
-    if (!validPassword) {
-      return res.status(401).json({ error: 'Invalid Employee ID or password' });
-    }
+    if (!validPassword) return res.status(401).json({ error: 'Invalid Employee ID or password' });
 
     const token = jwt.sign(
       { id: user.id, employee_id: user.employee_id, role: user.role },
@@ -39,13 +34,7 @@ router.post('/login', async (req, res) => {
 
     res.json({
       token,
-      user: {
-        id: user.id,
-        employee_id: user.employee_id,
-        name: user.name,
-        phone: user.phone,
-        role: user.role
-      }
+      user: { id: user.id, employee_id: user.employee_id, name: user.name, phone: user.phone, role: user.role }
     });
   } catch (err) {
     console.error('Login error:', err);
@@ -66,14 +55,12 @@ router.post('/change-password', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Both current and new password are required' });
     }
 
-    const user = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(req.user.id);
+    const user = await db.queryOne('SELECT password_hash FROM users WHERE id = $1', [req.user.id]);
     const valid = await bcrypt.compare(currentPassword, user.password_hash);
-    if (!valid) {
-      return res.status(400).json({ error: 'Current password does not match' });
-    }
+    if (!valid) return res.status(400).json({ error: 'Current password does not match' });
 
     const newHash = await bcrypt.hash(newPassword, 10);
-    db.prepare('UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(newHash, req.user.id);
+    await db.run('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2', [newHash, req.user.id]);
 
     res.json({ message: 'Password updated successfully' });
   } catch (err) {

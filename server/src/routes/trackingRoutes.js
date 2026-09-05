@@ -13,16 +13,12 @@ const sseClients = new Set();
 export function broadcastLocationUpdate(data) {
   const payload = `data: ${JSON.stringify(data)}\n\n`;
   for (const client of sseClients) {
-    try {
-      client.write(payload);
-    } catch (err) {
-      sseClients.delete(client);
-    }
+    try { client.write(payload); } catch { sseClients.delete(client); }
   }
 }
 
-// 1. Sync GPS Locations (Batch endpoint with deduplication)
-router.post('/sync', authenticateToken, requireSupervisor, (req, res) => {
+// 1. Sync GPS Locations (Batch with deduplication via ON CONFLICT DO NOTHING)
+router.post('/sync', authenticateToken, requireSupervisor, async (req, res) => {
   try {
     const supervisorId = req.user.id;
     const { points } = req.body;
@@ -31,11 +27,10 @@ router.post('/sync', authenticateToken, requireSupervisor, (req, res) => {
       return res.status(400).json({ error: 'Array of location points required' });
     }
 
-    // PRIVACY ENFORCEMENT: Check that supervisor has an ACTIVE duty session right now
-    const activeSession = db.prepare(`
-      SELECT id, conveyance_rate FROM duty_sessions 
-      WHERE supervisor_id = ? AND status = 'ON_DUTY'
-    `).get(supervisorId);
+    const activeSession = await db.queryOne(
+      `SELECT id, conveyance_rate FROM duty_sessions WHERE supervisor_id = $1 AND status = 'ON_DUTY'`,
+      [supervisorId]
+    );
 
     if (!activeSession) {
       return res.status(403).json({
@@ -44,59 +39,39 @@ router.post('/sync', authenticateToken, requireSupervisor, (req, res) => {
       });
     }
 
-    const insertStmt = db.prepare(`
-      INSERT OR IGNORE INTO location_points (
-        id, client_uuid, duty_session_id, supervisor_id,
-        latitude, longitude, accuracy, speed, heading, is_filtered, recorded_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
-    `);
-
     let insertedCount = 0;
-    const insertMany = db.transaction((pts) => {
-      for (const p of pts) {
-        const clientUuid = p.clientUuid || uuidv4();
-        const lat = parseFloat(p.latitude);
-        const lng = parseFloat(p.longitude);
-        const acc = p.accuracy != null ? parseFloat(p.accuracy) : null;
-        const spd = p.speed != null ? parseFloat(p.speed) : null;
-        const hdg = p.heading != null ? parseFloat(p.heading) : null;
-        const recAt = p.recordedAt || new Date().toISOString();
+    for (const p of points) {
+      const lat = parseFloat(p.latitude);
+      const lng = parseFloat(p.longitude);
+      if (isNaN(lat) || isNaN(lng)) continue;
 
-        if (!isNaN(lat) && !isNaN(lng)) {
-          const result = insertStmt.run(
-            uuidv4(),
-            clientUuid,
-            activeSession.id,
-            supervisorId,
-            lat,
-            lng,
-            acc,
-            spd,
-            hdg,
-            recAt
-          );
-          if (result.changes > 0) insertedCount++;
-        }
-      }
-    });
+      const clientUuid = p.clientUuid || uuidv4();
+      const acc = p.accuracy != null ? parseFloat(p.accuracy) : null;
+      const spd = p.speed != null ? parseFloat(p.speed) : null;
+      const hdg = p.heading != null ? parseFloat(p.heading) : null;
+      const recAt = p.recordedAt || new Date().toISOString();
 
-    insertMany(points);
+      const result = await db.run(
+        `INSERT INTO location_points (id, client_uuid, duty_session_id, supervisor_id, latitude, longitude, accuracy, speed, heading, is_filtered, recorded_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0, $10)
+         ON CONFLICT (client_uuid) DO NOTHING`,
+        [uuidv4(), clientUuid, activeSession.id, supervisorId, lat, lng, acc, spd, hdg, recAt]
+      );
+      if (result.rowCount > 0) insertedCount++;
+    }
 
-    // Recalculate accumulated GPS distance for the session
-    const allSessionPoints = db.prepare(`
-      SELECT * FROM location_points WHERE duty_session_id = ? ORDER BY recorded_at ASC
-    `).all(activeSession.id);
+    const allSessionPoints = await db.queryAll(
+      `SELECT * FROM location_points WHERE duty_session_id = $1 ORDER BY recorded_at ASC`,
+      [activeSession.id]
+    );
 
-    const { cleanedPoints, totalDistanceKm } = cleanGpsPoints(allSessionPoints);
+    const { totalDistanceKm } = cleanGpsPoints(allSessionPoints);
 
-    // Update session running GPS distance
-    db.prepare(`
-      UPDATE duty_sessions 
-      SET gps_distance_km = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).run(totalDistanceKm, activeSession.id);
+    await db.run(
+      `UPDATE duty_sessions SET gps_distance_km = $1, updated_at = NOW() WHERE id = $2`,
+      [totalDistanceKm, activeSession.id]
+    );
 
-    // Broadcast latest location to live map via SSE
     const latestPt = points[points.length - 1];
     broadcastLocationUpdate({
       type: 'LOCATION_UPDATE',
@@ -122,11 +97,11 @@ router.post('/sync', authenticateToken, requireSupervisor, (req, res) => {
   }
 });
 
-// 2. Get Live Supervisors for Admin Map
-router.get('/live', authenticateToken, requireAdmin, (req, res) => {
+// 2. Live supervisors for admin map
+router.get('/live', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const activeSupervisors = db.prepare(`
-      SELECT 
+    const activeSupervisors = await db.queryAll(`
+      SELECT
         u.id AS supervisor_id,
         u.name,
         u.employee_id,
@@ -137,7 +112,7 @@ router.get('/live', authenticateToken, requireAdmin, (req, res) => {
         ds.gps_distance_km,
         ds.conveyance_rate,
         (
-          SELECT json_object(
+          SELECT json_build_object(
             'latitude', lp.latitude,
             'longitude', lp.longitude,
             'accuracy', lp.accuracy,
@@ -153,35 +128,24 @@ router.get('/live', authenticateToken, requireAdmin, (req, res) => {
       FROM users u
       JOIN duty_sessions ds ON ds.supervisor_id = u.id AND ds.status = 'ON_DUTY'
       WHERE u.role = 'supervisor'
-    `).all();
+    `);
 
     const now = Date.now();
     const result = activeSupervisors.map((item) => {
-      const lastLoc = item.last_location_json ? JSON.parse(item.last_location_json) : null;
-      let isStale = false;
+      const lastLoc = item.last_location_json || null;
+      let isStale = true;
       let minutesSinceLastUpdate = null;
 
-      if (lastLoc && lastLoc.recorded_at) {
+      if (lastLoc?.recorded_at) {
         const lastTime = new Date(lastLoc.recorded_at).getTime();
         minutesSinceLastUpdate = Math.round((now - lastTime) / (1000 * 60));
-        if (minutesSinceLastUpdate > config.gps.staleLocationMinutes) {
-          isStale = true;
-        }
-      } else {
-        isStale = true;
+        isStale = minutesSinceLastUpdate > config.gps.staleLocationMinutes;
       }
 
       const rate = item.conveyance_rate || config.defaultBikeRate;
       const currentConveyance = Number(((item.gps_distance_km || 0) * rate).toFixed(2));
 
-      return {
-        ...item,
-        last_location_json: undefined,
-        lastLocation: lastLoc,
-        isStale,
-        minutesSinceLastUpdate,
-        currentConveyance
-      };
+      return { ...item, last_location_json: undefined, lastLocation: lastLoc, isStale, minutesSinceLastUpdate, currentConveyance };
     });
 
     res.json({ supervisors: result });
@@ -191,44 +155,37 @@ router.get('/live', authenticateToken, requireAdmin, (req, res) => {
   }
 });
 
-// 3. Get Route Points for a Duty Session
-router.get('/routes/:sessionId', authenticateToken, (req, res) => {
+// 3. Route points for a session
+router.get('/routes/:sessionId', authenticateToken, async (req, res) => {
   try {
     const { sessionId } = req.params;
 
-    const session = db.prepare(`
-      SELECT ds.*, u.name as supervisor_name, u.employee_id
-      FROM duty_sessions ds
-      JOIN users u ON u.id = ds.supervisor_id
-      WHERE ds.id = ?
-    `).get(sessionId);
+    const session = await db.queryOne(
+      `SELECT ds.*, u.name as supervisor_name, u.employee_id
+       FROM duty_sessions ds JOIN users u ON u.id = ds.supervisor_id WHERE ds.id = $1`,
+      [sessionId]
+    );
 
-    if (!session) {
-      return res.status(404).json({ error: 'Duty session not found' });
-    }
+    if (!session) return res.status(404).json({ error: 'Duty session not found' });
 
     if (req.user.role === 'supervisor' && session.supervisor_id !== req.user.id) {
       return res.status(403).json({ error: 'Unauthorized to view this route' });
     }
 
-    const points = db.prepare(`
-      SELECT id, latitude, longitude, accuracy, speed, heading, is_filtered, recorded_at
-      FROM location_points
-      WHERE duty_session_id = ?
-      ORDER BY recorded_at ASC
-    `).all(sessionId);
+    const points = await db.queryAll(
+      `SELECT id, latitude, longitude, accuracy, speed, heading, is_filtered, recorded_at
+       FROM location_points WHERE duty_session_id = $1 ORDER BY recorded_at ASC`,
+      [sessionId]
+    );
 
-    res.json({
-      session,
-      points
-    });
+    res.json({ session, points });
   } catch (err) {
     console.error('Route points error:', err);
     res.status(500).json({ error: 'Failed to fetch route points' });
   }
 });
 
-// 4. Server-Sent Events (SSE) Stream for Live Tracking
+// 4. SSE Stream for Live Tracking
 router.get('/stream', authenticateToken, requireAdmin, (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -236,13 +193,9 @@ router.get('/stream', authenticateToken, requireAdmin, (req, res) => {
   res.flushHeaders();
 
   sseClients.add(res);
-
-  // Send initial handshake
   res.write(`data: ${JSON.stringify({ type: 'CONNECTED', timestamp: new Date().toISOString() })}\n\n`);
 
-  req.on('close', () => {
-    sseClients.delete(res);
-  });
+  req.on('close', () => { sseClients.delete(res); });
 });
 
 export default router;

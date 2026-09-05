@@ -4,18 +4,17 @@ import { config } from '../config/index.js';
 /**
  * Gets the current active conveyance rate for a vehicle type (default 'Bike')
  */
-export function getActiveRate(vehicleType = 'Bike') {
-  const row = db.prepare(`
-    SELECT rate_per_km FROM conveyance_rates
-    WHERE vehicle_type = ? AND active = 1
-    ORDER BY effective_from DESC LIMIT 1
-  `).get(vehicleType);
-
+export async function getActiveRate(vehicleType = 'Bike') {
+  const row = await db.queryOne(
+    `SELECT rate_per_km FROM conveyance_rates WHERE vehicle_type = $1 AND active = 1 ORDER BY effective_from DESC LIMIT 1`,
+    [vehicleType]
+  );
   return row ? Number(row.rate_per_km) : config.defaultBikeRate;
 }
 
 /**
- * Evaluates session distance calculations and automatically selects the lower valid distance
+ * Evaluates session distance calculations and automatically selects the lower valid distance.
+ * Returns synchronously — rate must be passed in (already fetched async before calling this).
  */
 export function evaluateConveyance({
   startKm,
@@ -25,7 +24,8 @@ export function evaluateConveyance({
   startOdoManual,
   endOdoOcr,
   endOdoManual,
-  trackingGapMinutes = 0
+  trackingGapMinutes = 0,
+  rate
 }) {
   const warnings = [];
   let odometerDistance = null;
@@ -38,7 +38,6 @@ export function evaluateConveyance({
   // 1. Odometer validation
   if (!isNaN(startVal) && !isNaN(endVal)) {
     odometerDistance = Number((endVal - startVal).toFixed(2));
-
     if (odometerDistance < 0) {
       warnings.push(`Invalid Odometer: End KM (${endVal}) is less than Start KM (${startVal})`);
       isOdometerValid = false;
@@ -63,7 +62,6 @@ export function evaluateConveyance({
   let requiresAdminReview = false;
 
   if (isOdometerValid && gpsVal > 0) {
-    // Both valid: select the lower valid distance
     if (odometerDistance <= gpsVal) {
       approvedDistanceKm = odometerDistance;
       selectionReason = `Lower Valid Distance Selected (Odometer: ${odometerDistance.toFixed(2)} KM vs GPS: ${gpsVal.toFixed(2)} KM)`;
@@ -72,7 +70,6 @@ export function evaluateConveyance({
       selectionReason = `Lower Valid Distance Selected (GPS: ${gpsVal.toFixed(2)} KM vs Odometer: ${odometerDistance.toFixed(2)} KM)`;
     }
 
-    // Check for large discrepancy between GPS and Odometer (> 20%)
     const maxVal = Math.max(odometerDistance, gpsVal);
     const minVal = Math.min(odometerDistance, gpsVal);
     if (maxVal > 5 && ((maxVal - minVal) / maxVal) * 100 > config.gps.warningDiscrepancyPercent) {
@@ -100,13 +97,8 @@ export function evaluateConveyance({
     requiresAdminReview = true;
   }
 
-  // 5. Compute conveyance using active rate
-  const rate = getActiveRate('Bike');
+  // 5. Compute conveyance using provided rate
   const conveyanceAmount = Number((approvedDistanceKm * rate).toFixed(2));
-
-  // Determine initial status after end duty
-  // Even without anomalies, all sessions wait for Admin verification: PENDING_VERIFICATION
-  // If severe warnings (like End < Start or large discrepancy), mark NEEDS_REVIEW
   const status = (requiresAdminReview || !isOdometerValid) ? 'NEEDS_REVIEW' : 'PENDING_VERIFICATION';
 
   return {

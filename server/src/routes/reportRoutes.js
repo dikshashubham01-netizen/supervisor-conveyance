@@ -5,57 +5,54 @@ import { generateCsv, generateExcelBuffer, formatReportRows } from '../services/
 
 const router = express.Router();
 
-function getFilteredSessions(queryFilters) {
+async function getFilteredSessions(queryFilters) {
   const { startDate, endDate, supervisorId, employeeId, status } = queryFilters;
 
   let query = `
-    SELECT 
-      ds.*,
-      u.name AS supervisor_name,
-      u.employee_id
+    SELECT ds.*, u.name AS supervisor_name, u.employee_id
     FROM duty_sessions ds
     JOIN users u ON u.id = ds.supervisor_id
     WHERE 1=1
   `;
   const params = [];
+  let p = 1;
 
   if (startDate && startDate !== 'undefined' && startDate !== 'null') {
-    query += ' AND date(ds.start_time) >= date(?)';
+    query += ` AND ds.start_time::date >= $${p++}::date`;
     params.push(startDate);
   }
   if (endDate && endDate !== 'undefined' && endDate !== 'null') {
-    query += ' AND date(ds.start_time) <= date(?)';
+    query += ` AND ds.start_time::date <= $${p++}::date`;
     params.push(endDate);
   }
   if (supervisorId && supervisorId !== 'undefined' && supervisorId !== 'null') {
-    query += ' AND ds.supervisor_id = ?';
+    query += ` AND ds.supervisor_id = $${p++}`;
     params.push(supervisorId);
   }
   if (employeeId && employeeId !== 'undefined' && employeeId !== 'null') {
-    query += ' AND u.employee_id LIKE ?';
+    query += ` AND u.employee_id ILIKE $${p++}`;
     params.push(`%${employeeId.trim()}%`);
   }
   if (status && status !== 'ALL' && status !== 'undefined' && status !== 'null') {
-    query += ' AND ds.status = ?';
+    query += ` AND ds.status = $${p++}`;
     params.push(status);
   }
 
   query += ' ORDER BY ds.start_time DESC';
-  return db.prepare(query).all(...params);
+  return db.queryAll(query, params);
 }
 
 // 1. Report Data JSON
-router.get('/', authenticateToken, requireAdmin, (req, res) => {
+router.get('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const sessions = getFilteredSessions(req.query);
+    const sessions = await getFilteredSessions(req.query);
     const reportData = formatReportRows(sessions);
 
-    // Calculate aggregated totals
     const totals = sessions.reduce((acc, curr) => {
-      acc.totalApprovedKm += (curr.approved_distance_km || 0);
-      acc.totalGpsKm += (curr.gps_distance_km || 0);
-      acc.totalOdometerKm += (curr.odometer_distance_km || 0);
-      acc.totalConveyance += (curr.conveyance_amount || 0);
+      acc.totalApprovedKm += (Number(curr.approved_distance_km) || 0);
+      acc.totalGpsKm += (Number(curr.gps_distance_km) || 0);
+      acc.totalOdometerKm += (Number(curr.odometer_distance_km) || 0);
+      acc.totalConveyance += (Number(curr.conveyance_amount) || 0);
       return acc;
     }, { totalApprovedKm: 0, totalGpsKm: 0, totalOdometerKm: 0, totalConveyance: 0 });
 
@@ -64,12 +61,7 @@ router.get('/', authenticateToken, requireAdmin, (req, res) => {
     totals.totalOdometerKm = Number(totals.totalOdometerKm.toFixed(2));
     totals.totalConveyance = Number(totals.totalConveyance.toFixed(2));
 
-    res.json({
-      sessions,
-      reportRows: reportData,
-      totals,
-      count: sessions.length
-    });
+    res.json({ sessions, reportRows: reportData, totals, count: sessions.length });
   } catch (err) {
     console.error('Report query error:', err);
     res.status(500).json({ error: 'Failed to generate reports' });
@@ -77,11 +69,10 @@ router.get('/', authenticateToken, requireAdmin, (req, res) => {
 });
 
 // 2. Export CSV
-router.get('/export/csv', authenticateToken, requireAdmin, (req, res) => {
+router.get('/export/csv', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const sessions = getFilteredSessions(req.query);
+    const sessions = await getFilteredSessions(req.query);
     const csvContent = generateCsv(sessions);
-
     const filename = `Conveyance_Report_${new Date().toISOString().slice(0, 10)}.csv`;
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -93,11 +84,10 @@ router.get('/export/csv', authenticateToken, requireAdmin, (req, res) => {
 });
 
 // 3. Export Excel
-router.get('/export/excel', authenticateToken, requireAdmin, (req, res) => {
+router.get('/export/excel', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const sessions = getFilteredSessions(req.query);
+    const sessions = await getFilteredSessions(req.query);
     const excelBuffer = generateExcelBuffer(sessions);
-
     const filename = `Conveyance_Report_${new Date().toISOString().slice(0, 10)}.xlsx`;
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);

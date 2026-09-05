@@ -3,8 +3,8 @@ import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { config } from './config/index.js';
-import { initDatabase, db } from './db/database.js';
-import { seed, ensureAdminAndCleanState } from './db/seed.js';
+import { initDatabase } from './db/database.js';
+import { ensureAdminAndCleanState } from './db/seed.js';
 
 import authRoutes from './routes/authRoutes.js';
 import supervisorRoutes from './routes/supervisorRoutes.js';
@@ -19,10 +19,16 @@ import appVersionRoutes from './routes/appVersionRoutes.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Initialize SQLite database
-initDatabase();
+// ─── Initialize PostgreSQL (Supabase) tables ──────────────────────────────────
+try {
+  await initDatabase();
+  console.log('✅ PostgreSQL (Supabase) connected and tables ready.');
+} catch (err) {
+  console.error('❌ Failed to initialize database:', err.message);
+  process.exit(1);
+}
 
-// Configure custom admin and ensure clean 0 KM state
+// ─── Ensure admin and seed defaults ──────────────────────────────────────────
 try {
   await ensureAdminAndCleanState();
 } catch (adminErr) {
@@ -36,7 +42,7 @@ app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
-// Serve static uploaded photos securely
+// Serve static uploaded photos
 app.use('/uploads', express.static(config.uploadDir));
 
 // API Routes
@@ -55,6 +61,7 @@ app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'Supervisor Location & Bike Conveyance System',
+    database: 'Supabase PostgreSQL',
     timestamp: new Date().toISOString()
   });
 });
@@ -62,22 +69,18 @@ app.get('/api/health', (req, res) => {
 // Global error handler
 app.use((err, req, res, next) => {
   console.error('Unhandled server error:', err);
-  res.status(err.status || 500).json({
-    error: err.message || 'Internal Server Error'
-  });
+  res.status(err.status || 500).json({ error: err.message || 'Internal Server Error' });
 });
 
 const server = app.listen(config.port, () => {
-  console.log(`🚀 Conveyance Monitoring API Server running on port ${config.port}`);
+  console.log(`🚀 Conveyance Monitoring API running on port ${config.port}`);
   console.log(`📡 Upload directory: ${config.uploadDir}`);
-  console.log(`💾 Database file: ${config.dbPath}`);
+  console.log(`🗄️  Database: Supabase PostgreSQL`);
 });
 
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
-    console.error(`\n⚠️ Port ${config.port} is already in use by another running instance of this server.`);
-    console.error(`To free port ${config.port} on Windows, run this in PowerShell:`);
-    console.error(`  Get-NetTCPConnection -LocalPort ${config.port} | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }\n`);
+    console.error(`\n⚠️ Port ${config.port} is already in use.`);
     process.exit(1);
   } else {
     console.error('Server error:', err);

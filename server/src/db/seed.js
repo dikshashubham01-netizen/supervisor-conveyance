@@ -1,107 +1,108 @@
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { db, initDatabase } from './database.js';
-import { config } from '../config/index.js';
-import fs from 'fs';
-import path from 'path';
-
-initDatabase();
 
 // ─── ensureAdminAndCleanState ─────────────────────────────────────────────────
-// Runs on EVERY server startup. CRITICAL RULES:
-//   1. NEVER delete any supervisor accounts — all admin-created IDs survive restarts.
-//   2. NEVER delete duty_sessions, location_points, audit_logs — all field data is permanent.
-//   3. Only INSERT if missing. UPDATE admin password. Never wipe anything.
+// Runs on every server startup.
+// RULES: Never delete supervisors. Only add missing admin + EMP001 + default rate.
 // ─────────────────────────────────────────────────────────────────────────────
 export async function ensureAdminAndCleanState() {
   const adminEmail = 'soumya.ghosh@genus.in';
   const adminPass = 'Soumya@123';
   const passwordHash = await bcrypt.hash(adminPass, 10);
 
-  // 1. Ensure admin account exists with correct password
-  const existingAdmin = db.prepare('SELECT * FROM users WHERE employee_id = ? COLLATE NOCASE').get(adminEmail);
+  // 1. Upsert admin account
+  const existingAdmin = await db.queryOne(
+    'SELECT * FROM users WHERE LOWER(employee_id) = LOWER($1)',
+    [adminEmail]
+  );
+
   if (existingAdmin) {
-    db.prepare(`
-      UPDATE users SET password_hash = ?, role = 'admin', status = 'active', name = 'Soumya Ghosh'
-      WHERE id = ?
-    `).run(passwordHash, existingAdmin.id);
+    await db.run(
+      `UPDATE users SET password_hash = $1, role = 'admin', status = 'active', name = 'Soumya Ghosh', updated_at = NOW() WHERE id = $2`,
+      [passwordHash, existingAdmin.id]
+    );
     console.log('✅ Admin account verified.');
   } else {
-    db.prepare(`
-      INSERT INTO users (id, employee_id, name, phone, password_hash, role, status)
-      VALUES (?, ?, 'Soumya Ghosh', '9876543210', ?, 'admin', 'active')
-    `).run(uuidv4(), adminEmail, passwordHash);
+    await db.run(
+      `INSERT INTO users (id, employee_id, name, phone, password_hash, role, status) VALUES ($1, $2, 'Soumya Ghosh', '9876543210', $3, 'admin', 'active')`,
+      [uuidv4(), adminEmail, passwordHash]
+    );
     console.log('✅ Admin account created:', adminEmail);
   }
 
-  // 2. Remove old generic 'admin' username if it ever existed (old versions)
-  db.prepare(`DELETE FROM users WHERE employee_id = 'admin'`).run();
+  // 2. Remove legacy 'admin' username
+  await db.run(`DELETE FROM users WHERE employee_id = 'admin'`);
 
-  // 3. Ensure EMP001 (Shubham) exists — insert ONLY if missing
-  const existingEmp001 = db.prepare(`SELECT id FROM users WHERE employee_id = 'EMP001'`).get();
+  // 3. Ensure EMP001 (Shubham) exists
+  const existingEmp001 = await db.queryOne(`SELECT id FROM users WHERE employee_id = 'EMP001'`);
   if (!existingEmp001) {
     const supervisorPassHash = await bcrypt.hash('Soumya@123', 10);
-    db.prepare(`
-      INSERT INTO users (id, employee_id, name, phone, password_hash, role, status)
-      VALUES (?, 'EMP001', 'Shubham', '9216013070', ?, 'supervisor', 'active')
-    `).run(uuidv4(), supervisorPassHash);
+    await db.run(
+      `INSERT INTO users (id, employee_id, name, phone, password_hash, role, status) VALUES ($1, 'EMP001', 'Shubham', '9216013070', $2, 'supervisor', 'active')`,
+      [uuidv4(), supervisorPassHash]
+    );
     console.log('✅ Supervisor EMP001 (Shubham) created.');
   }
 
-  // 4. Ensure default conveyance rate exists — insert only if none exist
-  const rateCount = db.prepare('SELECT COUNT(*) as count FROM conveyance_rates').get()?.count || 0;
-  if (rateCount === 0) {
-    db.prepare(`
-      INSERT INTO conveyance_rates (id, vehicle_type, rate_per_km, effective_from, active)
-      VALUES (?, 'Bike', 4.50, CURRENT_TIMESTAMP, 1)
-    `).run(uuidv4());
+  // 4. Ensure default conveyance rate
+  const rateCount = await db.queryOne('SELECT COUNT(*) as count FROM conveyance_rates');
+  if (parseInt(rateCount?.count || 0) === 0) {
+    await db.run(
+      `INSERT INTO conveyance_rates (id, vehicle_type, rate_per_km, effective_from, active) VALUES ($1, 'Bike', 4.50, NOW(), 1)`,
+      [uuidv4()]
+    );
     console.log('✅ Default conveyance rate created: ₹4.50/KM for Bike');
   }
 
-  // 5. Log all supervisor accounts so they appear in server logs on restart
-  const allSupervisors = db.prepare(`
-    SELECT employee_id, name, phone, status FROM users WHERE role = 'supervisor' ORDER BY created_at ASC
-  `).all();
+  // 5. Log all supervisors on startup
+  const allSupervisors = await db.queryAll(
+    `SELECT employee_id, name, phone, status FROM users WHERE role = 'supervisor' ORDER BY created_at ASC`
+  );
   console.log(`\n📋 ACTIVE SUPERVISOR ACCOUNTS (${allSupervisors.length} total):`);
   allSupervisors.forEach(s => {
     console.log(`   [${s.status.toUpperCase()}] ${s.employee_id.padEnd(12)} — ${s.name} (${s.phone})`);
   });
-
-  console.log(`✅ Admin: ${adminEmail} — ALL data fully preserved.\n`);
+  console.log(`✅ Admin: ${adminEmail} — ALL data preserved in Supabase.\n`);
 }
 
-// ─── seed() — Manual dev-only full reset ─────────────────────────────────────
-// WARNING: Wipes everything. Never call automatically in production.
+// ─── seed() — Manual reset only ──────────────────────────────────────────────
 export async function seed() {
   console.log('⚠️  MANUAL SEED RESET — Wiping all data...');
 
   const passwordAdmin = await bcrypt.hash('Soumya@123', 10);
   const passwordSupervisor = await bcrypt.hash('Soumya@123', 10);
 
-  db.prepare('DELETE FROM conveyance_rates').run();
-  db.prepare(`
-    INSERT INTO conveyance_rates (id, vehicle_type, rate_per_km, effective_from, active)
-    VALUES (?, 'Bike', 4.50, '2026-01-01 00:00:00', 1)
-  `).run(uuidv4());
+  await db.run('DELETE FROM audit_logs');
+  await db.run('DELETE FROM location_points');
+  await db.run('DELETE FROM duty_sessions');
+  await db.run('DELETE FROM conveyance_rates');
+  await db.run('DELETE FROM users');
 
-  db.prepare('DELETE FROM users').run();
-  db.prepare(`
-    INSERT INTO users (id, employee_id, name, phone, password_hash, role, status)
-    VALUES (?, 'soumya.ghosh@genus.in', 'Soumya Ghosh', '9876543210', ?, 'admin', 'active')
-  `).run(uuidv4(), passwordAdmin);
+  await db.run(
+    `INSERT INTO conveyance_rates (id, vehicle_type, rate_per_km, effective_from, active) VALUES ($1, 'Bike', 4.50, NOW(), 1)`,
+    [uuidv4()]
+  );
 
-  db.prepare(`
-    INSERT INTO users (id, employee_id, name, phone, password_hash, role, status)
-    VALUES (?, 'EMP001', 'Shubham', '9216013070', ?, 'supervisor', 'active')
-  `).run(uuidv4(), passwordSupervisor);
+  await db.run(
+    `INSERT INTO users (id, employee_id, name, phone, password_hash, role, status) VALUES ($1, 'soumya.ghosh@genus.in', 'Soumya Ghosh', '9876543210', $2, 'admin', 'active')`,
+    [uuidv4(), passwordAdmin]
+  );
 
-  db.prepare('DELETE FROM duty_sessions').run();
-  db.prepare('DELETE FROM location_points').run();
-  db.prepare('DELETE FROM audit_logs').run();
+  await db.run(
+    `INSERT INTO users (id, employee_id, name, phone, password_hash, role, status) VALUES ($1, 'EMP001', 'Shubham', '9216013070', $2, 'supervisor', 'active')`,
+    [uuidv4(), passwordSupervisor]
+  );
+
+  await db.run('DELETE FROM duty_sessions');
+  await db.run('DELETE FROM location_points');
+  await db.run('DELETE FROM audit_logs');
 
   console.log('✅ Database seeded. Admin: soumya.ghosh@genus.in / Soumya@123');
 }
 
 if (process.argv[1]?.endsWith('seed.js')) {
-  seed().catch(console.error);
+  await initDatabase();
+  await seed().catch(console.error);
+  process.exit(0);
 }

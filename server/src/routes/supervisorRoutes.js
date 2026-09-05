@@ -7,10 +7,10 @@ import { authenticateToken, requireAdmin } from '../middleware/auth.js';
 const router = express.Router();
 
 // List all supervisors with their active duty status and stats
-router.get('/', authenticateToken, requireAdmin, (req, res) => {
+router.get('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const supervisors = db.prepare(`
-      SELECT 
+    const supervisors = await db.queryAll(`
+      SELECT
         u.id, u.employee_id, u.name, u.phone, u.status, u.created_at,
         ds.id AS active_duty_id,
         ds.start_time AS active_duty_start,
@@ -22,8 +22,7 @@ router.get('/', authenticateToken, requireAdmin, (req, res) => {
       LEFT JOIN duty_sessions ds ON ds.supervisor_id = u.id AND ds.status = 'ON_DUTY'
       WHERE u.role = 'supervisor'
       ORDER BY u.employee_id ASC
-    `).all();
-
+    `);
     res.json({ supervisors });
   } catch (err) {
     console.error('Fetch supervisors error:', err);
@@ -35,13 +34,12 @@ router.get('/', authenticateToken, requireAdmin, (req, res) => {
 router.post('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { employee_id, name, phone, password } = req.body;
-
     if (!employee_id || !name || !password) {
       return res.status(400).json({ error: 'Employee ID, Name, and Password are required' });
     }
 
     const cleanEmpId = employee_id.trim().toUpperCase();
-    const existing = db.prepare('SELECT id FROM users WHERE employee_id = ?').get(cleanEmpId);
+    const existing = await db.queryOne('SELECT id FROM users WHERE employee_id = $1', [cleanEmpId]);
     if (existing) {
       return res.status(400).json({ error: `Supervisor with Employee ID "${cleanEmpId}" already exists` });
     }
@@ -49,16 +47,15 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
     const id = uuidv4();
     const password_hash = await bcrypt.hash(password, 10);
 
-    db.prepare(`
-      INSERT INTO users (id, employee_id, name, phone, password_hash, role, status)
-      VALUES (?, ?, ?, ?, ?, 'supervisor', 'active')
-    `).run(id, cleanEmpId, name.trim(), phone ? phone.trim() : null, password_hash);
+    await db.run(
+      `INSERT INTO users (id, employee_id, name, phone, password_hash, role, status) VALUES ($1, $2, $3, $4, $5, 'supervisor', 'active')`,
+      [id, cleanEmpId, name.trim(), phone ? phone.trim() : null, password_hash]
+    );
 
-    // Audit log
-    db.prepare(`
-      INSERT INTO audit_logs (id, user_id, action, new_value, reason)
-      VALUES (?, ?, 'CREATE_SUPERVISOR', ?, 'Admin created supervisor')
-    `).run(uuidv4(), req.user.id, `Created ${cleanEmpId} - ${name}`);
+    await db.run(
+      `INSERT INTO audit_logs (id, user_id, action, new_value, reason) VALUES ($1, $2, 'CREATE_SUPERVISOR', $3, 'Admin created supervisor')`,
+      [uuidv4(), req.user.id, `Created ${cleanEmpId} - ${name}`]
+    );
 
     res.status(201).json({
       message: 'Supervisor created successfully',
@@ -76,36 +73,32 @@ router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
     const { id } = req.params;
     const { name, phone, status, password } = req.body;
 
-    const existing = db.prepare('SELECT * FROM users WHERE id = ? AND role = ?').get(id, 'supervisor');
-    if (!existing) {
-      return res.status(404).json({ error: 'Supervisor not found' });
-    }
+    const existing = await db.queryOne('SELECT * FROM users WHERE id = $1 AND role = $2', [id, 'supervisor']);
+    if (!existing) return res.status(404).json({ error: 'Supervisor not found' });
 
     let passwordHash = existing.password_hash;
     if (password && password.trim()) {
       passwordHash = await bcrypt.hash(password.trim(), 10);
     }
 
-    db.prepare(`
-      UPDATE users 
-      SET name = ?, phone = ?, status = ?, password_hash = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).run(
-      name ? name.trim() : existing.name,
-      phone !== undefined ? (phone ? phone.trim() : null) : existing.phone,
-      status || existing.status,
-      passwordHash,
-      id
+    await db.run(
+      `UPDATE users SET name = $1, phone = $2, status = $3, password_hash = $4, updated_at = NOW() WHERE id = $5`,
+      [
+        name ? name.trim() : existing.name,
+        phone !== undefined ? (phone ? phone.trim() : null) : existing.phone,
+        status || existing.status,
+        passwordHash,
+        id
+      ]
     );
 
-    // Audit log
-    db.prepare(`
-      INSERT INTO audit_logs (id, user_id, action, old_value, new_value, reason)
-      VALUES (?, ?, 'UPDATE_SUPERVISOR', ?, ?, 'Admin updated supervisor details')
-    `).run(
-      uuidv4(), req.user.id,
-      JSON.stringify({ name: existing.name, status: existing.status }),
-      JSON.stringify({ name: name || existing.name, status: status || existing.status })
+    await db.run(
+      `INSERT INTO audit_logs (id, user_id, action, old_value, new_value, reason) VALUES ($1, $2, 'UPDATE_SUPERVISOR', $3, $4, 'Admin updated supervisor details')`,
+      [
+        uuidv4(), req.user.id,
+        JSON.stringify({ name: existing.name, status: existing.status }),
+        JSON.stringify({ name: name || existing.name, status: status || existing.status })
+      ]
     );
 
     res.json({ message: 'Supervisor updated successfully' });
@@ -116,21 +109,18 @@ router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
 });
 
 // Delete supervisor
-router.delete('/:id', authenticateToken, requireAdmin, (req, res) => {
+router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const existing = db.prepare('SELECT employee_id, name FROM users WHERE id = ? AND role = ?').get(id, 'supervisor');
-    if (!existing) {
-      return res.status(404).json({ error: 'Supervisor not found' });
-    }
+    const existing = await db.queryOne('SELECT employee_id, name FROM users WHERE id = $1 AND role = $2', [id, 'supervisor']);
+    if (!existing) return res.status(404).json({ error: 'Supervisor not found' });
 
-    db.prepare('DELETE FROM users WHERE id = ?').run(id);
+    await db.run('DELETE FROM users WHERE id = $1', [id]);
 
-    // Audit log
-    db.prepare(`
-      INSERT INTO audit_logs (id, user_id, action, old_value, reason)
-      VALUES (?, ?, 'DELETE_SUPERVISOR', ?, 'Admin deleted supervisor')
-    `).run(uuidv4(), req.user.id, `${existing.employee_id} - ${existing.name}`);
+    await db.run(
+      `INSERT INTO audit_logs (id, user_id, action, old_value, reason) VALUES ($1, $2, 'DELETE_SUPERVISOR', $3, 'Admin deleted supervisor')`,
+      [uuidv4(), req.user.id, `${existing.employee_id} - ${existing.name}`]
+    );
 
     res.json({ message: 'Supervisor deleted successfully' });
   } catch (err) {

@@ -7,30 +7,30 @@ const router = express.Router();
 const DEFAULT_VERSION = {
   id: 'latest',
   version: '1.0.3',
-  versionCode: 4,
+  version_code: 4,
   min_supported_version: '1.0.0',
-  apkUrl: 'https://supervisor-conveyance.vercel.app/Supervisor-App.apk',
+  apk_url: 'https://supervisor-conveyance.vercel.app/Supervisor-App.apk',
   download_page_url: 'https://supervisor-conveyance.vercel.app/download',
   changelog: 'Continuous Native Background GPS Service, live IST time display fix, and in-dashboard auto-update prompt.',
   release_date: new Date().toISOString()
 };
 
-// Ensure default version in database
-export function ensureAppVersion() {
+export async function ensureAppVersion() {
   try {
-    const existing = db.prepare("SELECT * FROM app_version WHERE id = 'latest'").get();
+    const existing = await db.queryOne(`SELECT * FROM app_version WHERE id = 'latest'`);
     if (!existing) {
-      db.prepare(`
-        INSERT INTO app_version (id, version, version_code, min_supported_version, apk_url, download_page_url, changelog)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        DEFAULT_VERSION.id,
-        DEFAULT_VERSION.version,
-        DEFAULT_VERSION.version_code,
-        DEFAULT_VERSION.min_supported_version,
-        DEFAULT_VERSION.apk_url,
-        DEFAULT_VERSION.download_page_url,
-        DEFAULT_VERSION.changelog
+      await db.run(
+        `INSERT INTO app_version (id, version, version_code, min_supported_version, apk_url, download_page_url, changelog)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          DEFAULT_VERSION.id,
+          DEFAULT_VERSION.version,
+          DEFAULT_VERSION.version_code,
+          DEFAULT_VERSION.min_supported_version,
+          DEFAULT_VERSION.apk_url,
+          DEFAULT_VERSION.download_page_url,
+          DEFAULT_VERSION.changelog
+        ]
       );
     }
   } catch (err) {
@@ -38,12 +38,11 @@ export function ensureAppVersion() {
   }
 }
 
-// GET /api/app/version (Public - used by Mobile App to check for updates)
-router.get('/version', (req, res) => {
+// GET /api/app/version (Public)
+router.get('/version', async (req, res) => {
   try {
-    ensureAppVersion();
-    const row = db.prepare("SELECT * FROM app_version WHERE id = 'latest'").get() || DEFAULT_VERSION;
-
+    await ensureAppVersion();
+    const row = await db.queryOne(`SELECT * FROM app_version WHERE id = 'latest'`) || DEFAULT_VERSION;
     res.json({
       version: row.version,
       versionCode: Number(row.version_code),
@@ -66,34 +65,26 @@ router.get('/version', (req, res) => {
   }
 });
 
-// Also alias GET / to /version
-router.get('/', (req, res) => {
-  res.redirect('/api/app/version');
-});
+router.get('/', (req, res) => { res.redirect('/api/app/version'); });
 
-// POST /api/app/version (Admin Only - publish new version)
-router.post('/version', authenticateToken, requireAdmin, (req, res) => {
+// POST /api/app/version (Admin Only)
+router.post('/version', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { version, versionCode, minSupportedVersion, apkUrl, downloadPageUrl, changelog } = req.body;
+    if (!version) return res.status(400).json({ error: 'Version string is required (e.g. 1.0.2)' });
 
-    if (!version) {
-      return res.status(400).json({ error: 'Version string is required (e.g. 1.0.2)' });
-    }
-
-    ensureAppVersion();
-
-    const existing = db.prepare("SELECT * FROM app_version WHERE id = 'latest'").get();
+    await ensureAppVersion();
+    const existing = await db.queryOne(`SELECT * FROM app_version WHERE id = 'latest'`);
     const newVersionCode = versionCode ? parseInt(versionCode, 10) : (existing ? existing.version_code + 1 : 1);
     const newApkUrl = apkUrl || existing?.apk_url || DEFAULT_VERSION.apk_url;
     const newDownloadUrl = downloadPageUrl || existing?.download_page_url || DEFAULT_VERSION.download_page_url;
     const newChangelog = changelog || existing?.changelog || 'General improvements and bug fixes.';
     const newMinVersion = minSupportedVersion || existing?.min_supported_version || '1.0.0';
 
-    db.prepare(`
-      UPDATE app_version
-      SET version = ?, version_code = ?, min_supported_version = ?, apk_url = ?, download_page_url = ?, changelog = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = 'latest'
-    `).run(version.trim(), newVersionCode, newMinVersion, newApkUrl, newDownloadUrl, newChangelog);
+    await db.run(
+      `UPDATE app_version SET version = $1, version_code = $2, min_supported_version = $3, apk_url = $4, download_page_url = $5, changelog = $6, updated_at = NOW() WHERE id = 'latest'`,
+      [version.trim(), newVersionCode, newMinVersion, newApkUrl, newDownloadUrl, newChangelog]
+    );
 
     res.json({
       message: `App version updated to v${version.trim()}`,
