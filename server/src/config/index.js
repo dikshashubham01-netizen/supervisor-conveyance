@@ -19,8 +19,8 @@ export const config = {
   jwtExpiresIn: '7d',
   defaultBikeRate: 4.50,
   uploadDir: uploadsDir,
-  // PostgreSQL / Supabase connection string
-  databaseUrl: process.env.DATABASE_URL || 'postgresql://postgres:Shubham%40003@db.bjvmdztpllbjizlefjdb.supabase.co:5432/postgres',
+  // PostgreSQL / Supabase connection string (using IPv4 pooler for Render compatibility)
+  databaseUrl: process.env.DATABASE_URL || 'postgresql://postgres.bjvmdztpllbjizlefjdb:Shubham%40003@aws-0-ap-northeast-1.pooler.supabase.com:5432/postgres',
   gps: {
     maxSpeedKmh: 120,
     maxAccuracyMeters: 100,
