@@ -14,9 +14,17 @@ function haversineMeters(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
+export function getAccuracyRating(accuracy) {
+  if (accuracy == null || isNaN(accuracy)) return { rating: 'UNKNOWN', label: 'NO GPS', color: 'slate' };
+  if (accuracy <= 25) return { rating: 'GOOD', label: `GOOD ±${Math.round(accuracy)}m`, color: 'emerald' };
+  if (accuracy <= 50) return { rating: 'FAIR', label: `FAIR ±${Math.round(accuracy)}m`, color: 'amber' };
+  return { rating: 'POOR', label: `POOR ±${Math.round(accuracy)}m`, color: 'rose' };
+}
+
 export function useGeolocation(isTrackingActive = false, dutySessionId = null) {
   const { queueLocation } = useOfflineQueue();
   const [currentPosition, setCurrentPosition] = useState(null);
+  const [accuracyRating, setAccuracyRating] = useState({ rating: 'UNKNOWN', label: 'NO GPS', color: 'slate' });
   const [error, setError] = useState(null);
   const [permissionState, setPermissionState] = useState('prompt'); // granted, denied, prompt
   const lastRecordedRef = useRef(null);
@@ -31,13 +39,16 @@ export function useGeolocation(isTrackingActive = false, dutySessionId = null) {
       }
       navigator.geolocation.getCurrentPosition(
         (pos) => {
-          resolve({
+          const res = {
             latitude: pos.coords.latitude,
             longitude: pos.coords.longitude,
             accuracy: pos.coords.accuracy,
             speed: pos.coords.speed,
-            heading: pos.coords.heading
-          });
+            heading: pos.coords.heading,
+            altitude: pos.coords.altitude || null
+          };
+          setAccuracyRating(getAccuracyRating(pos.coords.accuracy));
+          resolve(res);
         },
         (err) => {
           console.warn('One-off geolocation error, using last or fallback:', err.message);
@@ -74,25 +85,39 @@ export function useGeolocation(isTrackingActive = false, dutySessionId = null) {
     }
 
     const handleSuccess = (pos) => {
+      const accuracy = pos.coords.accuracy || 10;
+      const rating = getAccuracyRating(accuracy);
+      setAccuracyRating(rating);
+
       const coords = {
         latitude: pos.coords.latitude,
         longitude: pos.coords.longitude,
-        accuracy: pos.coords.accuracy,
-        speed: pos.coords.speed,
-        heading: pos.coords.heading,
+        accuracy: accuracy,
+        speed: pos.coords.speed || 0,
+        heading: pos.coords.heading || 0,
+        altitude: pos.coords.altitude || null,
+        provider: 'gps',
+        is_mock: false,
         recordedAt: new Date(pos.timestamp).toISOString()
       };
 
       setCurrentPosition(coords);
       setError(null);
 
-      // Intelligent movement filter:
-      // Record point if:
-      // 1. First point
-      // 2. Or moved at least 6 meters
-      // 3. Or at least 25 seconds elapsed
-      const last = lastRecordedRef.current;
+      // Filter 1: Stale locations (> 30s old)
       const now = Date.now();
+      const ageMs = Math.abs(now - pos.timestamp);
+      if (ageMs > 30000) {
+        return;
+      }
+
+      // Filter 2: Inaccurate locations (> 50m)
+      if (accuracy > 50) {
+        return;
+      }
+
+      // Filter 3: Jump rejection (> 100 km/h)
+      const last = lastRecordedRef.current;
       let shouldRecord = false;
 
       if (!last) {
@@ -100,8 +125,13 @@ export function useGeolocation(isTrackingActive = false, dutySessionId = null) {
       } else {
         const dist = haversineMeters(last.latitude, last.longitude, coords.latitude, coords.longitude);
         const timeElapsedSec = (now - last.timestamp) / 1000;
+        const speedKmh = (dist / 1000) / (Math.max(1, timeElapsedSec) / 3600);
 
-        if (dist >= 6 || timeElapsedSec >= 25) {
+        if (dist > 100 && speedKmh > 100) {
+          return;
+        }
+
+        if (dist >= 5 || timeElapsedSec >= 15) {
           shouldRecord = true;
         }
       }
@@ -145,6 +175,7 @@ export function useGeolocation(isTrackingActive = false, dutySessionId = null) {
 
   return {
     currentPosition,
+    accuracyRating,
     error,
     permissionState,
     getCurrentPositionAsync

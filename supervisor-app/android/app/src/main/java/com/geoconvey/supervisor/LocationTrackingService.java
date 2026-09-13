@@ -7,7 +7,6 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.content.pm.ServiceInfo;
 import android.location.Location;
 import android.location.LocationListener;
@@ -16,6 +15,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.os.PowerManager;
+import android.provider.Settings;
 import android.util.Log;
 import androidx.core.app.NotificationCompat;
 import org.json.JSONArray;
@@ -49,6 +49,33 @@ public class LocationTrackingService extends Service implements LocationListener
 
     private Location lastRecordedLocation = null;
     private long lastRecordedTime = 0;
+
+    /**
+     * Check if Android Developer Options are enabled on this device
+     */
+    public static boolean isDeveloperOptionsEnabled(Context context) {
+        if (context == null) return false;
+        try {
+            return Settings.Global.getInt(
+                    context.getContentResolver(),
+                    Settings.Global.DEVELOPMENT_SETTINGS_ENABLED, 0
+            ) != 0;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Check if a location comes from a mock provider
+     */
+    public static boolean isMockLocation(Location location) {
+        if (location == null) return false;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            return location.isMock();
+        } else {
+            return location.isFromMockProvider();
+        }
+    }
 
     @Override
     public void onCreate() {
@@ -84,6 +111,15 @@ public class LocationTrackingService extends Service implements LocationListener
             }
         }
 
+        // Security check: If Developer Options are enabled, block immediately
+        if (isDeveloperOptionsEnabled(this)) {
+            Log.w(TAG, "Developer options enabled on start command! Aborting service.");
+            sendSecurityEvent("DEVELOPER_OPTIONS_ENABLED", "Developer options enabled when starting tracking service");
+            stopTracking();
+            stopSelf();
+            return START_NOT_STICKY;
+        }
+
         // Acquire WakeLock so CPU doesn't sleep while phone is locked in pocket
         if (wakeLock != null && !wakeLock.isHeld()) {
             wakeLock.acquire(12 * 60 * 60 * 1000L); // Max 12 hours safety timeout
@@ -106,25 +142,18 @@ public class LocationTrackingService extends Service implements LocationListener
         if (locationManager == null) return;
 
         try {
-            // Request updates from GPS Provider (high accuracy)
+            // Enforce high-accuracy GPS hardware only to eliminate cell-tower / network jumps
             if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
                 locationManager.requestLocationUpdates(
                         LocationManager.GPS_PROVIDER,
-                        5000L, // 5 seconds
-                        5.0f,  // 5 meters
+                        4000L, // 4 seconds
+                        4.0f,  // 4 meters
                         this
                 );
+                Log.d(TAG, "High-accuracy GPS location updates registered for duty session: " + dutySessionId);
+            } else {
+                Log.w(TAG, "GPS Provider is not enabled on device!");
             }
-            // Request updates from Network Provider (fallback)
-            if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
-                locationManager.requestLocationUpdates(
-                        LocationManager.NETWORK_PROVIDER,
-                        5000L,
-                        5.0f,
-                        this
-                );
-            }
-            Log.d(TAG, "Location updates started for duty session: " + dutySessionId);
         } catch (SecurityException se) {
             Log.e(TAG, "Location permission missing: " + se.getMessage());
         } catch (Exception e) {
@@ -136,12 +165,47 @@ public class LocationTrackingService extends Service implements LocationListener
     public void onLocationChanged(Location location) {
         if (location == null) return;
 
-        // Skip inaccurate points (> 50m)
-        if (location.hasAccuracy() && location.getAccuracy() > 50.0f) {
+        // Security check: Developer options enabled during duty
+        if (isDeveloperOptionsEnabled(this)) {
+            Log.w(TAG, "Developer options enabled during active duty! Stopping tracking.");
+            sendSecurityEvent("DEVELOPER_OPTIONS_ENABLED", "Developer options was enabled during active duty");
+            stopTracking();
+            stopSelf();
             return;
         }
 
+        // Security check: Mock location detected
+        if (isMockLocation(location)) {
+            Log.w(TAG, "Mock location detected! Dropping point and reporting security violation.");
+            sendSecurityEvent("MOCK_LOCATION_DETECTED", "Mock location provider detected: " + location.getProvider());
+            return;
+        }
+
+        // Quality check 1: Discard stale locations (> 30s old)
         long now = System.currentTimeMillis();
+        long ageMs = Math.abs(now - location.getTime());
+        if (ageMs > 30000) {
+            Log.d(TAG, "Stale location dropped, age: " + (ageMs / 1000) + "s");
+            return;
+        }
+
+        // Quality check 2: Discard inaccurate locations (> 50m)
+        if (location.hasAccuracy() && location.getAccuracy() > 50.0f) {
+            Log.d(TAG, "Inaccurate location dropped: accuracy=" + location.getAccuracy() + "m");
+            return;
+        }
+
+        // Quality check 3: Discard teleportation / jump > 100 km/h against last recorded location
+        if (lastRecordedLocation != null) {
+            float dist = lastRecordedLocation.distanceTo(location);
+            long timeDiffSec = Math.max(1, (location.getTime() - lastRecordedLocation.getTime()) / 1000);
+            double speedKmh = (dist / 1000.0) / (timeDiffSec / 3600.0);
+            if (dist > 100 && speedKmh > 100.0) {
+                Log.w(TAG, "GPS jump rejected! Distance=" + dist + "m, time=" + timeDiffSec + "s, speed=" + speedKmh + "km/h");
+                return;
+            }
+        }
+
         boolean shouldRecord = false;
 
         if (lastRecordedLocation == null) {
@@ -149,8 +213,8 @@ public class LocationTrackingService extends Service implements LocationListener
         } else {
             float dist = lastRecordedLocation.distanceTo(location);
             long elapsedSeconds = (now - lastRecordedTime) / 1000;
-            // Record if moved >= 5 meters or 20 seconds passed
-            if (dist >= 5.0f || elapsedSeconds >= 20) {
+            // Record if moved >= 5 meters or 15 seconds passed
+            if (dist >= 5.0f || elapsedSeconds >= 15) {
                 shouldRecord = true;
             }
         }
@@ -181,6 +245,9 @@ public class LocationTrackingService extends Service implements LocationListener
                 pointObj.put("accuracy", loc.hasAccuracy() ? loc.getAccuracy() : 10.0f);
                 pointObj.put("speed", loc.hasSpeed() ? loc.getSpeed() : 0.0f);
                 pointObj.put("heading", loc.hasBearing() ? loc.getBearing() : 0.0f);
+                pointObj.put("altitude", loc.hasAltitude() ? loc.getAltitude() : JSONObject.NULL);
+                pointObj.put("provider", loc.getProvider() != null ? loc.getProvider() : "gps");
+                pointObj.put("is_mock", isMockLocation(loc));
                 pointObj.put("recordedAt", timeStr);
 
                 JSONArray pointsArray = new JSONArray();
@@ -211,6 +278,44 @@ public class LocationTrackingService extends Service implements LocationListener
                 conn.disconnect();
             } catch (Exception e) {
                 Log.w(TAG, "Failed to stream GPS point to cloud: " + e.getMessage());
+            }
+        });
+    }
+
+    private void sendSecurityEvent(String eventType, String reason) {
+        if (dutySessionId == null || dutySessionId.isEmpty()) return;
+        networkExecutor.execute(() -> {
+            try {
+                JSONObject payload = new JSONObject();
+                payload.put("duty_session_id", dutySessionId);
+                payload.put("event_type", eventType);
+                JSONObject details = new JSONObject();
+                details.put("reason", reason);
+                details.put("timestamp", System.currentTimeMillis());
+                payload.put("details", details);
+
+                URL url = new URL(serverUrl + "/api/tracking/security-event");
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "application/json");
+                if (authToken != null && !authToken.isEmpty()) {
+                    conn.setRequestProperty("Authorization", "Bearer " + authToken);
+                }
+                conn.setConnectTimeout(8000);
+                conn.setReadTimeout(8000);
+                conn.setDoOutput(true);
+
+                byte[] body = payload.toString().getBytes("UTF-8");
+                try (OutputStream os = conn.getOutputStream()) {
+                    os.write(body);
+                    os.flush();
+                }
+
+                int code = conn.getResponseCode();
+                Log.d(TAG, "Security event reported to cloud: " + eventType + " -> HTTP " + code);
+                conn.disconnect();
+            } catch (Exception e) {
+                Log.w(TAG, "Failed to send security event: " + e.getMessage());
             }
         });
     }

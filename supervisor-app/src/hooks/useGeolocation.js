@@ -14,9 +14,17 @@ function haversineMeters(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
+export function getAccuracyRating(accuracy) {
+  if (accuracy == null || isNaN(accuracy)) return { rating: 'UNKNOWN', label: 'NO GPS', color: 'slate' };
+  if (accuracy <= 25) return { rating: 'GOOD', label: `GOOD ±${Math.round(accuracy)}m`, color: 'emerald' };
+  if (accuracy <= 50) return { rating: 'FAIR', label: `FAIR ±${Math.round(accuracy)}m`, color: 'amber' };
+  return { rating: 'POOR', label: `POOR ±${Math.round(accuracy)}m`, color: 'rose' };
+}
+
 export function useGeolocation(isTrackingActive = false, dutySessionId = null) {
   const { queueLocation } = useOfflineQueue();
   const [currentPosition, setCurrentPosition] = useState(null);
+  const [accuracyRating, setAccuracyRating] = useState({ rating: 'UNKNOWN', label: 'NO GPS', color: 'slate' });
   const [error, setError] = useState(null);
   const lastRecordedRef = useRef(null);
   const watchIdRef = useRef(null);
@@ -24,19 +32,21 @@ export function useGeolocation(isTrackingActive = false, dutySessionId = null) {
   // Single snapshot position helper
   const getCurrentPositionAsync = useCallback(async () => {
     try {
-      // Try Capacitor Native Geolocation first
       const pos = await Geolocation.getCurrentPosition({
         enableHighAccuracy: true,
         timeout: 10000,
         maximumAge: 5000
       });
-      return {
+      const res = {
         latitude: pos.coords.latitude,
         longitude: pos.coords.longitude,
         accuracy: pos.coords.accuracy,
         speed: pos.coords.speed,
-        heading: pos.coords.heading
+        heading: pos.coords.heading,
+        altitude: pos.coords.altitude || null
       };
+      setAccuracyRating(getAccuracyRating(pos.coords.accuracy));
+      return res;
     } catch (err) {
       console.warn('Native GPS snapshot error, falling back:', err.message);
       return new Promise((resolve) => {
@@ -46,13 +56,16 @@ export function useGeolocation(isTrackingActive = false, dutySessionId = null) {
         }
         navigator.geolocation.getCurrentPosition(
           (p) => {
-            resolve({
+            const res = {
               latitude: p.coords.latitude,
               longitude: p.coords.longitude,
               accuracy: p.coords.accuracy,
               speed: p.coords.speed,
-              heading: p.coords.heading
-            });
+              heading: p.coords.heading,
+              altitude: p.coords.altitude || null
+            };
+            setAccuracyRating(getAccuracyRating(p.coords.accuracy));
+            resolve(res);
           },
           () => resolve(currentPosition || { latitude: 19.0760, longitude: 72.8777, accuracy: 15 }),
           { enableHighAccuracy: true, timeout: 8000 }
@@ -85,29 +98,57 @@ export function useGeolocation(isTrackingActive = false, dutySessionId = null) {
             }
             if (!position || !isMounted) return;
 
+            const accuracy = position.coords.accuracy || 10;
+            const rating = getAccuracyRating(accuracy);
+            setAccuracyRating(rating);
+
             const coords = {
               latitude: position.coords.latitude,
               longitude: position.coords.longitude,
-              accuracy: position.coords.accuracy,
-              speed: position.coords.speed,
-              heading: position.coords.heading,
+              accuracy: accuracy,
+              speed: position.coords.speed || 0,
+              heading: position.coords.heading || 0,
+              altitude: position.coords.altitude || null,
+              provider: 'gps',
+              is_mock: false,
               recordedAt: new Date(position.timestamp).toISOString()
             };
 
             setCurrentPosition(coords);
             setError(null);
 
-            // Movement throttling (>= 5 meters OR >= 20 seconds)
-            const last = lastRecordedRef.current;
+            // Filter 1: Stale locations (> 30s old)
             const now = Date.now();
+            const ageMs = Math.abs(now - position.timestamp);
+            if (ageMs > 30000) {
+              console.warn('Discarding stale GPS point in frontend watcher:', ageMs / 1000, 's');
+              return;
+            }
+
+            // Filter 2: Inaccurate locations (> 50m)
+            if (accuracy > 50) {
+              console.warn('Discarding inaccurate GPS point in frontend watcher:', accuracy, 'm');
+              return;
+            }
+
+            // Filter 3: Jump / Teleportation rejection (> 100 km/h)
+            const last = lastRecordedRef.current;
             let shouldRecord = false;
 
             if (!last) {
               shouldRecord = true;
             } else {
               const dist = haversineMeters(last.latitude, last.longitude, coords.latitude, coords.longitude);
-              const elapsed = (now - last.timestamp) / 1000;
-              if (dist >= 5 || elapsed >= 20) {
+              const elapsedSec = (now - last.timestamp) / 1000;
+              const speedKmh = (dist / 1000) / (Math.max(1, elapsedSec) / 3600);
+
+              if (dist > 100 && speedKmh > 100) {
+                console.warn('GPS jump rejected in frontend watcher! Dist:', dist, 'm, Speed:', speedKmh, 'km/h');
+                return;
+              }
+
+              // Movement throttling: record if moved >= 5 meters OR >= 15 seconds elapsed
+              if (dist >= 5 || elapsedSec >= 15) {
                 shouldRecord = true;
               }
             }
@@ -146,5 +187,5 @@ export function useGeolocation(isTrackingActive = false, dutySessionId = null) {
     };
   }, [isTrackingActive, dutySessionId, queueLocation]);
 
-  return { currentPosition, error, getCurrentPositionAsync };
+  return { currentPosition, accuracyRating, error, getCurrentPositionAsync };
 }

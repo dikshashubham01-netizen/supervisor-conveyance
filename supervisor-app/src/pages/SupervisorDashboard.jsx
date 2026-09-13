@@ -28,6 +28,10 @@ import {
 } from 'lucide-react';
 import { UpdateModal } from '../components/common/UpdateModal';
 
+import { checkDeveloperOptions, stopBackgroundTracking } from '../utils/backgroundTracking';
+import SecurityScreen from '../components/common/SecurityScreen';
+import { getServerUrl, getToken } from '../api/client';
+
 const CURRENT_APP_VERSION = '1.0.3';
 
 export function SupervisorDashboard() {
@@ -40,6 +44,44 @@ export function SupervisorDashboard() {
   const [remoteVersionInfo, setRemoteVersionInfo] = useState(null);
   const [hasUpdate, setHasUpdate] = useState(false);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
+  const [isDevBlocked, setIsDevBlocked] = useState(false);
+
+  // Check Developer Options on mount and periodically
+  const checkDevMode = useCallback(async () => {
+    try {
+      const enabled = await checkDeveloperOptions();
+      if (enabled) {
+        setIsDevBlocked(true);
+        if (isOnDuty) {
+          stopBackgroundTracking();
+          try {
+            fetch(`${getServerUrl()}/api/tracking/security-event`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${getToken()}`
+              },
+              body: JSON.stringify({
+                duty_session_id: activeDuty?.id,
+                event_type: 'DEVELOPER_OPTIONS_ENABLED',
+                details: { reason: 'Developer options enabled during active duty' }
+              })
+            }).catch(() => {});
+          } catch (e) {}
+        }
+      } else {
+        setIsDevBlocked(false);
+      }
+    } catch (e) {
+      console.warn('Dev mode check warning:', e);
+    }
+  }, [isOnDuty, activeDuty?.id]);
+
+  useEffect(() => {
+    checkDevMode();
+    const timer = setInterval(checkDevMode, 4000);
+    return () => clearInterval(timer);
+  }, [checkDevMode]);
 
   // Check for app updates
   useEffect(() => {
@@ -61,7 +103,7 @@ export function SupervisorDashboard() {
   }, []);
 
   // High-accuracy background GPS tracking
-  const { currentPosition, error: gpsError } = useGeolocation(isOnDuty, activeDuty?.id);
+  const { currentPosition, accuracyRating, error: gpsError } = useGeolocation(isOnDuty, activeDuty?.id);
 
   // Auto-refresh stats from server periodically while on duty
   useEffect(() => {
@@ -69,6 +111,10 @@ export function SupervisorDashboard() {
     const interval = setInterval(refreshDuty, 12000);
     return () => clearInterval(interval);
   }, [isOnDuty, refreshDuty]);
+
+  if (isDevBlocked) {
+    return <SecurityScreen onRecheck={checkDevMode} violationType="DEVELOPER_OPTIONS" />;
+  }
 
   if (viewState === 'start') {
     return (
@@ -174,14 +220,38 @@ export function SupervisorDashboard() {
           )}
         </div>
 
-        <button
-          type="button"
-          onClick={triggerSync}
-          className="text-slate-400 hover:text-white p-1"
-          title="Sync Now"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Live GPS Quality Pill */}
+          <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold border transition-colors ${
+            accuracyRating?.rating === 'GOOD'
+              ? 'bg-emerald-950/90 text-emerald-300 border-emerald-500/40'
+              : accuracyRating?.rating === 'FAIR'
+              ? 'bg-amber-950/90 text-amber-300 border-amber-500/40'
+              : accuracyRating?.rating === 'POOR'
+              ? 'bg-rose-950/90 text-rose-300 border-rose-500/40'
+              : 'bg-slate-950 text-slate-400 border-slate-800'
+          }`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${
+              accuracyRating?.rating === 'GOOD'
+                ? 'bg-emerald-400 animate-pulse'
+                : accuracyRating?.rating === 'FAIR'
+                ? 'bg-amber-400'
+                : accuracyRating?.rating === 'POOR'
+                ? 'bg-rose-400'
+                : 'bg-slate-500'
+            }`} />
+            <span>GPS: {accuracyRating?.rating || 'NO FIX'}</span>
+          </span>
+
+          <button
+            type="button"
+            onClick={triggerSync}
+            className="text-slate-400 hover:text-white p-1"
+            title="Sync Now"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
       </div>
 
       {/* GPS Error Warning */}
@@ -207,10 +277,18 @@ export function SupervisorDashboard() {
               </div>
             </div>
 
-            <span className="text-[10px] font-bold px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
-              <Navigation className="w-3 h-3 animate-spin" />
-              <span>GPS Tracking Active</span>
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border flex items-center gap-1 ${
+                accuracyRating?.rating === 'GOOD'
+                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                  : accuracyRating?.rating === 'FAIR'
+                  ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                  : 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+              }`}>
+                <Navigation className="w-3 h-3" />
+                <span>{accuracyRating?.label || 'GPS Active'}</span>
+              </span>
+            </div>
           </div>
 
           {/* Telemetry Metrics */}

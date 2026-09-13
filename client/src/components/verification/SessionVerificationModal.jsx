@@ -20,6 +20,7 @@ import {
 export function SessionVerificationModal({ isOpen, onClose, sessionId, onActionComplete }) {
   const [details, setDetails] = useState(null);
   const [routePoints, setRoutePoints] = useState([]);
+  const [routeData, setRouteData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   // Override / Action state
@@ -33,6 +34,7 @@ export function SessionVerificationModal({ isOpen, onClose, sessionId, onActionC
     if (!isOpen || !sessionId) {
       setDetails(null);
       setRoutePoints([]);
+      setRouteData(null);
       setIsOverriding(false);
       return;
     }
@@ -46,6 +48,7 @@ export function SessionVerificationModal({ isOpen, onClose, sessionId, onActionC
         ]);
         setDetails(detailRes);
         setRoutePoints(routeRes.points || []);
+        setRouteData(routeRes);
         if (detailRes.session) {
           setOverrideKm(detailRes.session.approved_distance_km ?? '');
         }
@@ -278,7 +281,12 @@ export function SessionVerificationModal({ isOpen, onClose, sessionId, onActionC
               <Navigation className="w-4 h-4 text-emerald-400" />
               3. GPS Route & Distance Verification
             </h5>
-            <RoutePlaybackMap points={routePoints} session={session} />
+            <RoutePlaybackMap
+              points={routePoints}
+              session={session}
+              segments={routeData?.segments}
+              gaps={routeData?.gaps}
+            />
           </div>
 
           {/* SECTION 4: Distance & Conveyance Calculation Breakdown */}

@@ -35,7 +35,7 @@ export function SupervisorDashboard() {
   const { isLocked, isSupported: wakeLockSupported } = useWakeLock(isOnDuty);
 
   // Active GPS tracking during duty
-  const { currentPosition, error: gpsError } = useGeolocation(isOnDuty, activeDuty?.id);
+  const { currentPosition, accuracyRating, error: gpsError } = useGeolocation(isOnDuty, activeDuty?.id);
 
   // Auto-refresh running GPS distance from backend periodically during duty
   useEffect(() => {
@@ -158,8 +158,29 @@ export function SupervisorDashboard() {
               </div>
             </div>
 
-            {/* Tracking pill */}
-            <div className="text-right">
+            {/* Tracking pill & GPS Quality */}
+            <div className="flex flex-col items-end gap-1.5">
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold border transition-colors ${
+                accuracyRating?.rating === 'GOOD'
+                  ? 'bg-emerald-950/80 text-emerald-400 border-emerald-500/40'
+                  : accuracyRating?.rating === 'FAIR'
+                  ? 'bg-amber-950/80 text-amber-400 border-amber-500/40'
+                  : accuracyRating?.rating === 'POOR'
+                  ? 'bg-rose-950/80 text-rose-400 border-rose-500/40'
+                  : 'bg-slate-900 text-slate-400 border-slate-700'
+              }`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${
+                  accuracyRating?.rating === 'GOOD'
+                    ? 'bg-emerald-400 animate-pulse'
+                    : accuracyRating?.rating === 'FAIR'
+                    ? 'bg-amber-400'
+                    : accuracyRating?.rating === 'POOR'
+                    ? 'bg-rose-400'
+                    : 'bg-slate-400'
+                }`} />
+                <span>GPS: {accuracyRating?.label || 'SEARCHING'}</span>
+              </span>
+
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
                 <Navigation className="w-3.5 h-3.5 animate-spin" />
                 <span>Location Tracking Active</span>

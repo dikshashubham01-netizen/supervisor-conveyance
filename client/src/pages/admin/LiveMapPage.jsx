@@ -77,15 +77,28 @@ export function LiveMapPage() {
                       <div className="text-[11px] text-slate-400 font-mono">{sup.employee_id}</div>
                     </div>
 
-                    <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                        sup.isStale
-                          ? 'bg-amber-950/80 border-amber-500/50 text-amber-300'
-                          : 'bg-emerald-950/80 border-emerald-500/50 text-emerald-300'
-                      }`}
-                    >
-                      {sup.isStale ? '⚠️ STALE GPS' : '🟢 TRACKING'}
-                    </span>
+                    <div className="flex flex-col items-end gap-1">
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                          (sup.lastLocation?.accuracy_rating === 'GOOD' || (sup.lastLocation?.accuracy && sup.lastLocation.accuracy <= 25))
+                            ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-300'
+                            : (sup.lastLocation?.accuracy_rating === 'FAIR' || (sup.lastLocation?.accuracy && sup.lastLocation.accuracy <= 50))
+                            ? 'bg-amber-950/80 border-amber-500/50 text-amber-300'
+                            : 'bg-rose-950/80 border-rose-500/50 text-rose-300'
+                        }`}
+                      >
+                        GPS: {sup.lastLocation?.accuracy_rating || (sup.lastLocation?.accuracy <= 25 ? 'GOOD' : 'FAIR')}
+                      </span>
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                          sup.isStale
+                            ? 'bg-amber-950/80 border-amber-500/50 text-amber-300'
+                            : 'bg-emerald-950/80 border-emerald-500/50 text-emerald-300'
+                        }`}
+                      >
+                        {sup.isStale ? '⚠️ STALE' : '🟢 LIVE'}
+                      </span>
+                    </div>
                   </div>
                 </div>
               );

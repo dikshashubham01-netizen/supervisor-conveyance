@@ -3,6 +3,7 @@ import { NativeCameraModal } from '../components/camera/NativeCameraModal';
 import { OdometerScannerModal } from '../components/camera/OdometerScannerModal';
 import { useGeolocation } from '../hooks/useGeolocation';
 import { api } from '../api/client';
+import { checkDeveloperOptions } from '../utils/backgroundTracking';
 import { Camera, Gauge, CheckCircle2, ArrowRight, ShieldCheck } from 'lucide-react';
 
 export function StartDutyWizard({ onDutyStarted, onCancel }) {
@@ -42,6 +43,13 @@ export function StartDutyWizard({ onDutyStarted, onCancel }) {
     try {
       setSubmitting(true);
       setError(null);
+
+      const isDev = await checkDeveloperOptions();
+      if (isDev) {
+        setError('Android Developer Options are enabled on this device. You must turn off Developer Options in Settings to start duty.');
+        setSubmitting(false);
+        return;
+      }
 
       const pos = await getCurrentPositionAsync();
 

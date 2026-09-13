@@ -167,11 +167,25 @@ export async function initDatabase() {
       accuracy FLOAT,
       speed FLOAT,
       heading FLOAT,
+      altitude FLOAT,
+      provider TEXT,
+      is_mock INTEGER NOT NULL DEFAULT 0,
       is_filtered INTEGER NOT NULL DEFAULT 0,
+      filter_reason TEXT,
       recorded_at TIMESTAMPTZ NOT NULL,
       synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+
+  // Migration: add columns to location_points if they do not exist
+  try {
+    await db.query(`ALTER TABLE location_points ADD COLUMN IF NOT EXISTS filter_reason TEXT`);
+    await db.query(`ALTER TABLE location_points ADD COLUMN IF NOT EXISTS is_mock INTEGER NOT NULL DEFAULT 0`);
+    await db.query(`ALTER TABLE location_points ADD COLUMN IF NOT EXISTS provider TEXT`);
+    await db.query(`ALTER TABLE location_points ADD COLUMN IF NOT EXISTS altitude FLOAT`);
+  } catch (err) {
+    // Columns already exist
+  }
 
   await db.query(`
     CREATE TABLE IF NOT EXISTS audit_logs (
@@ -204,6 +218,7 @@ export async function initDatabase() {
   await db.query(`CREATE INDEX IF NOT EXISTS idx_duty_sessions_supervisor ON duty_sessions(supervisor_id, status)`);
   await db.query(`CREATE INDEX IF NOT EXISTS idx_duty_sessions_dates ON duty_sessions(start_time, end_time)`);
   await db.query(`CREATE INDEX IF NOT EXISTS idx_location_points_session ON location_points(duty_session_id, recorded_at)`);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_location_points_valid ON location_points(duty_session_id, is_filtered, recorded_at)`);
   await db.query(`CREATE INDEX IF NOT EXISTS idx_audit_logs_session ON audit_logs(duty_session_id)`);
   await db.query(`CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance(attendance_date)`);
   await db.query(`CREATE INDEX IF NOT EXISTS idx_attendance_supervisor_date ON attendance(supervisor_id, attendance_date)`);

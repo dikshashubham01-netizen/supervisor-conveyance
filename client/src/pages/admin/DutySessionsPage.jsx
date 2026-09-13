@@ -222,7 +222,22 @@ export function DutySessionsPage() {
                       {formatCurrency(s.conveyance_amount)}
                     </td>
                     <td className="py-3 px-4">
-                      <StatusBadge status={s.status} />
+                      <div className="flex flex-col items-start gap-1">
+                        <StatusBadge status={s.status} />
+                        {(() => {
+                          try {
+                            const warnings = s.warnings ? (typeof s.warnings === 'string' ? JSON.parse(s.warnings) : s.warnings) : [];
+                            if (warnings.length > 0) {
+                              return (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-400 bg-amber-950/60 border border-amber-500/40 px-1.5 py-0.5 rounded">
+                                  ⚠️ {warnings.length} {warnings.length === 1 ? 'flag' : 'flags'}
+                                </span>
+                              );
+                            }
+                          } catch (e) {}
+                          return null;
+                        })()}
+                      </div>
                     </td>
                     <td className="py-3 px-4 text-right">
                       <button

@@ -22,10 +22,14 @@ export const config = {
   // PostgreSQL / Supabase connection string (using IPv4 pooler for Render compatibility)
   databaseUrl: process.env.DATABASE_URL || 'postgresql://postgres.bjvmdztpllbjizlefjdb:Shubham%40003@aws-0-ap-northeast-1.pooler.supabase.com:5432/postgres',
   gps: {
-    maxSpeedKmh: 120,
-    maxAccuracyMeters: 100,
+    maxSpeedKmh: 100,
+    maxAccuracyMeters: 50,
+    preferredAccuracyMeters: 25,
     minDistanceMeters: 3,
-    staleLocationMinutes: 15,
+    staleLocationSeconds: 30,
+    staleLocationMinutes: 10,
+    maxGapMinutes: 5,
+    maxGapMeters: 1000,
     warningDiscrepancyPercent: 20
   }
 };

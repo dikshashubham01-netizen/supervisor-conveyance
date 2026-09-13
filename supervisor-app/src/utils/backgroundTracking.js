@@ -27,3 +27,20 @@ export async function stopBackgroundTracking() {
     console.warn('Background tracking stop warning:', err?.message || err);
   }
 }
+
+export async function checkDeveloperOptions() {
+  try {
+    const result = await BackgroundTracking.isDeveloperOptionsEnabled();
+    return !!result?.enabled;
+  } catch (err) {
+    return false;
+  }
+}
+
+export async function openDeveloperSettings() {
+  try {
+    await BackgroundTracking.openDeveloperSettings();
+  } catch (err) {
+    console.warn('Cannot open developer settings:', err?.message || err);
+  }
+}

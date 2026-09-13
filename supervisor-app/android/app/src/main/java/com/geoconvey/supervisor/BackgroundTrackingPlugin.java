@@ -16,6 +16,12 @@ public class BackgroundTrackingPlugin extends Plugin {
 
     @PluginMethod
     public void startTracking(PluginCall call) {
+        // Prevent starting tracking if Developer Options are enabled
+        if (LocationTrackingService.isDeveloperOptionsEnabled(getContext())) {
+            call.reject("Cannot start tracking: Developer Options are enabled on this device.");
+            return;
+        }
+
         String dutySessionId = call.getString("dutySessionId");
         String supervisorId = call.getString("supervisorId");
         String token = call.getString("token");
@@ -65,6 +71,37 @@ public class BackgroundTrackingPlugin extends Plugin {
         } catch (Exception e) {
             Log.e(TAG, "Failed to stop background tracking: " + e.getMessage());
             call.reject("Failed to stop background tracking: " + e.getMessage());
+        }
+    }
+
+    @PluginMethod
+    public void isDeveloperOptionsEnabled(PluginCall call) {
+        boolean enabled = LocationTrackingService.isDeveloperOptionsEnabled(getContext());
+        JSObject ret = new JSObject();
+        ret.put("enabled", enabled);
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void openDeveloperSettings(PluginCall call) {
+        try {
+            Intent intent = new Intent(android.provider.Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS);
+            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            call.resolve(ret);
+        } catch (Exception e) {
+            try {
+                Intent fallback = new Intent(android.provider.Settings.ACTION_SETTINGS);
+                fallback.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(fallback);
+                JSObject ret = new JSObject();
+                ret.put("success", true);
+                call.resolve(ret);
+            } catch (Exception ex) {
+                call.reject("Could not open settings: " + ex.getMessage());
+            }
         }
     }
 }

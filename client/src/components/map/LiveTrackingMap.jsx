@@ -132,9 +132,26 @@ export function LiveTrackingMap({ onSelectSupervisor, selectedSupervisorId }) {
               <div style="font-weight: 700; font-size: 14px;">${sup.name}</div>
               <div style="font-size: 11px; color: #64748b; font-family: monospace;">${sup.employee_id}</div>
             </div>
-            <span style="font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 9999px; background: ${isStale ? '#fef3c7' : '#dcfce7'}; color: ${isStale ? '#b45309' : '#15803d'};">
-              ${isStale ? 'STALE' : 'LIVE'}
-            </span>
+            <div style="display: flex; gap: 4px; align-items: center;">
+              <span style="font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 9999px; background: ${
+                (loc.accuracy_rating === 'GOOD' || (loc.accuracy && loc.accuracy <= 25))
+                  ? '#dcfce7'
+                  : (loc.accuracy_rating === 'FAIR' || (loc.accuracy && loc.accuracy <= 50))
+                  ? '#fef3c7'
+                  : '#fee2e2'
+              }; color: ${
+                (loc.accuracy_rating === 'GOOD' || (loc.accuracy && loc.accuracy <= 25))
+                  ? '#15803d'
+                  : (loc.accuracy_rating === 'FAIR' || (loc.accuracy && loc.accuracy <= 50))
+                  ? '#b45309'
+                  : '#b91c1c'
+              };">
+                GPS: ${loc.accuracy_rating || (loc.accuracy <= 25 ? 'GOOD' : loc.accuracy <= 50 ? 'FAIR' : 'POOR')}
+              </span>
+              <span style="font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 9999px; background: ${isStale ? '#fef3c7' : '#dcfce7'}; color: ${isStale ? '#b45309' : '#15803d'};">
+                ${isStale ? 'STALE' : 'LIVE'}
+              </span>
+            </div>
           </div>
 
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 11px; margin-bottom: 8px;">
@@ -157,7 +174,7 @@ export function LiveTrackingMap({ onSelectSupervisor, selectedSupervisorId }) {
           </div>
 
           <div style="font-size: 10px; color: #64748b; border-top: 1px solid #f1f5f9; padding-top: 6px;">
-            <div>Accuracy: ±${Math.round(loc.accuracy || 10)}m</div>
+            <div>Accuracy: ±${Math.round(loc.accuracy || 10)}m (${loc.accuracy_rating || 'GOOD'})</div>
             <div>Last update: ${sup.minutesSinceLastUpdate != null ? `${sup.minutesSinceLastUpdate} mins ago` : 'Just now'}</div>
           </div>
         </div>
