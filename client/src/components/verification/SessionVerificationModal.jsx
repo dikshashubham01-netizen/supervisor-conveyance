@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Modal } from '../common/Modal';
 import { StatusBadge } from '../common/Badge';
-import { RoutePlaybackMap } from '../map/RoutePlaybackMap';
+import { SafeRoutePlaybackMap } from '../map/RoutePlaybackMap';
 import { api, getUploadUrl } from '../../api/client';
 import { formatCurrency, formatDistance, formatDateTime, formatTime } from '../../utils/formatters';
 import {
@@ -17,7 +17,7 @@ import {
   ShieldAlert
 } from 'lucide-react';
 
-export function SessionVerificationModal({ isOpen, onClose, sessionId, onActionComplete }) {
+function SessionVerificationModalInner({ isOpen, onClose, sessionId, onActionComplete }) {
   const [details, setDetails] = useState(null);
   const [routePoints, setRoutePoints] = useState([]);
   const [routeData, setRouteData] = useState(null);
@@ -123,11 +123,13 @@ export function SessionVerificationModal({ isOpen, onClose, sessionId, onActionC
     if (Array.isArray(session?.warnings)) {
       warnings = session.warnings;
     } else if (typeof session?.warnings === 'string') {
-      warnings = JSON.parse(session.warnings);
+      const parsed = JSON.parse(session.warnings);
+      if (Array.isArray(parsed)) warnings = parsed;
     }
   } catch (e) {
     warnings = [];
   }
+  if (!Array.isArray(warnings)) warnings = [];
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Duty Session Verification & Audit" maxWidth="max-w-4xl">
@@ -339,7 +341,7 @@ export function SessionVerificationModal({ isOpen, onClose, sessionId, onActionC
               3. GPS Route & Distance Verification
             </h5>
             {routePoints && routePoints.length > 0 ? (
-              <RoutePlaybackMap
+              <SafeRoutePlaybackMap
                 points={routePoints}
                 session={session}
                 segments={routeData?.segments}
@@ -416,8 +418,10 @@ export function SessionVerificationModal({ isOpen, onClose, sessionId, onActionC
                     </div>
                     {log.new_value && (
                       <div className="text-[11px] text-slate-400 mt-1 font-mono">
-                        {log.old_value && <span>{log.old_value} &rarr; </span>}
-                        <span className="text-emerald-400">{log.new_value}</span>
+                        {log.old_value && <span>{typeof log.old_value === 'object' ? JSON.stringify(log.old_value) : String(log.old_value)} &rarr; </span>}
+                        <span className="text-emerald-400">
+                          {typeof log.new_value === 'object' ? JSON.stringify(log.new_value) : String(log.new_value)}
+                        </span>
                       </div>
                     )}
                   </div>
@@ -523,5 +527,63 @@ export function SessionVerificationModal({ isOpen, onClose, sessionId, onActionC
         </div>
       )}
     </Modal>
+  );
+}
+
+// ─── Modal Error Boundary ───────────────────────────────────────────────────
+class ModalErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, errorMsg: '' };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, errorMsg: error?.message || String(error) };
+  }
+  componentDidCatch(error, info) {
+    console.error('SessionVerificationModal caught error:', error, info);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <Modal isOpen={this.props.isOpen} onClose={this.props.onClose} title="Duty Session Verification & Audit" maxWidth="max-w-2xl">
+          <div className="p-8 text-center flex flex-col items-center justify-center gap-4">
+            <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-full text-rose-400">
+              <AlertTriangle className="w-8 h-8" />
+            </div>
+            <div>
+              <h4 className="text-base font-semibold text-white mb-1">Session Data Display Error</h4>
+              <p className="text-xs text-slate-400 max-w-md mx-auto">
+                {this.state.errorMsg || 'An error occurred while displaying this session.'}
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => this.setState({ hasError: false, errorMsg: '' })}
+                className="px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold rounded-lg transition"
+              >
+                Retry
+              </button>
+              <button
+                type="button"
+                onClick={this.props.onClose}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-lg transition border border-slate-700"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </Modal>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+export function SessionVerificationModal(props) {
+  return (
+    <ModalErrorBoundary isOpen={props.isOpen} onClose={props.onClose}>
+      <SessionVerificationModalInner {...props} />
+    </ModalErrorBoundary>
   );
 }

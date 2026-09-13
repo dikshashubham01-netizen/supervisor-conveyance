@@ -33,7 +33,7 @@ import {
   Bike
 } from 'lucide-react';
 
-export default function App() {
+function AppInner() {
   const { user, loading, isAdmin, isSupervisor } = useAuth();
   const [currentPage, setCurrentPage] = useState(() => {
     return window.location.pathname.toLowerCase().includes('download') ? 'download' : 'dashboard';
@@ -222,5 +222,54 @@ export default function App() {
         )}
       </main>
     </div>
+  );
+}
+
+// ─── Global Error Boundary ──────────────────────────────────────────────────
+class GlobalErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, errorMsg: '' };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, errorMsg: error?.message || String(error) };
+  }
+  componentDidCatch(error, info) {
+    console.error('🚨 Portal GlobalErrorBoundary caught:', error, info);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-white text-center gap-4">
+          <div className="w-14 h-14 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 text-2xl">
+            ⚠️
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-white mb-1">System View Error</h2>
+            <p className="text-xs text-slate-400 max-w-md mx-auto">
+              {this.state.errorMsg || 'An unexpected rendering error occurred in this view.'}
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              this.setState({ hasError: false, errorMsg: '' });
+              window.location.reload();
+            }}
+            className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 font-semibold text-sm text-white rounded-xl shadow-lg transition"
+          >
+            Refresh & Recover
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+export default function App() {
+  return (
+    <GlobalErrorBoundary>
+      <AppInner />
+    </GlobalErrorBoundary>
   );
 }

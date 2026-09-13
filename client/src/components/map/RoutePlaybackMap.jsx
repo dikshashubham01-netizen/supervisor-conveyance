@@ -60,74 +60,104 @@ export function RoutePlaybackMap({ points = [], session = {}, segments: inputSeg
   const [selectedPoint, setSelectedPoint] = useState(null);
 
   useEffect(() => {
-    if (!mapContainerRef.current || mapInstanceRef.current) return;
+    const container = mapContainerRef.current;
+    if (!container) return;
 
-    const map = L.map(mapContainerRef.current, {
-      center: [19.0760, 72.8777],
-      zoom: 13,
-      zoomControl: false
-    });
+    // Clean up any existing leaflet instance on this DOM element
+    if (mapInstanceRef.current) {
+      try {
+        mapInstanceRef.current.remove();
+      } catch (e) {}
+      mapInstanceRef.current = null;
+    }
+    if (container._leaflet_id) {
+      container._leaflet_id = null;
+    }
 
-    L.control.zoom({ position: 'topright' }).addTo(map);
+    let map;
+    try {
+      map = L.map(container, {
+        center: [19.0760, 72.8777],
+        zoom: 13,
+        zoomControl: false
+      });
 
-    // OpenStreetMap tile layer
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-      subdomains: 'abc',
-      maxZoom: 19
-    }).addTo(map);
+      L.control.zoom({ position: 'topright' }).addTo(map);
 
-    layersGroupRef.current = L.featureGroup().addTo(map);
-    mapInstanceRef.current = map;
+      // OpenStreetMap tile layer
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        subdomains: 'abc',
+        maxZoom: 19
+      }).addTo(map);
+
+      layersGroupRef.current = L.featureGroup().addTo(map);
+      mapInstanceRef.current = map;
+    } catch (err) {
+      console.warn('Failed to initialize Leaflet map in RoutePlaybackMap:', err);
+    }
 
     return () => {
-      map.remove();
-      mapInstanceRef.current = null;
+      if (mapInstanceRef.current) {
+        try {
+          mapInstanceRef.current.remove();
+        } catch (e) {}
+        mapInstanceRef.current = null;
+      }
+      if (container && container._leaflet_id) {
+        container._leaflet_id = null;
+      }
+      layersGroupRef.current = null;
     };
   }, []);
 
   // Render polyline route, gap markers, and waypoints
   useEffect(() => {
-    const map = mapInstanceRef.current;
-    const group = layersGroupRef.current;
-    if (!map || !group) return;
+    try {
+      const map = mapInstanceRef.current;
+      const group = layersGroupRef.current;
+      if (!map || !group) return;
 
-    group.clearLayers();
+      group.clearLayers();
 
-    if (!points || points.length === 0) return;
+      if (!points || points.length === 0) return;
 
-    // Use passed segments/gaps or compute fallback
-    const { segments, gaps } = (inputSegments && inputGaps)
-      ? { segments: inputSegments, gaps: inputGaps }
-      : segmentPointsFallback(points);
+      // Use passed segments/gaps or compute fallback
+      const { segments, gaps } = (inputSegments && inputGaps)
+        ? { segments: inputSegments, gaps: inputGaps }
+        : segmentPointsFallback(points);
 
-    const validPoints = points.filter((p) => p.is_filtered === 0);
-    const filteredPoints = points.filter((p) => p.is_filtered === 1);
+      const validPoints = points.filter((p) => p.is_filtered === 0 && !isNaN(Number(p.latitude)) && !isNaN(Number(p.longitude)));
+      const filteredPoints = points.filter((p) => p.is_filtered === 1 && !isNaN(Number(p.latitude)) && !isNaN(Number(p.longitude)));
 
-    // 1. Draw continuous valid route segments (NEVER draw across gaps)
-    segments.forEach((seg) => {
-      if (seg && seg.length > 1) {
-        const segLatLngs = seg.map((p) => [p.latitude, p.longitude]);
+      // 1. Draw continuous valid route segments (NEVER draw across gaps)
+      segments.forEach((seg) => {
+        if (seg && seg.length > 1) {
+          const segLatLngs = seg
+            .filter((p) => !isNaN(Number(p.latitude)) && !isNaN(Number(p.longitude)))
+            .map((p) => [Number(p.latitude), Number(p.longitude)]);
 
-        // Outer glow
-        L.polyline(segLatLngs, {
-          color: '#059669',
-          weight: 8,
-          opacity: 0.35,
-          lineCap: 'round',
-          lineJoin: 'round'
-        }).addTo(group);
+          if (segLatLngs.length > 1) {
+            // Outer glow
+            L.polyline(segLatLngs, {
+              color: '#059669',
+              weight: 8,
+              opacity: 0.35,
+              lineCap: 'round',
+              lineJoin: 'round'
+            }).addTo(group);
 
-        // Crisp primary route line
-        L.polyline(segLatLngs, {
-          color: '#10b981',
-          weight: 4,
-          opacity: 0.95,
-          lineCap: 'round',
-          lineJoin: 'round'
-        }).addTo(group);
-      }
-    });
+            // Crisp primary route line
+            L.polyline(segLatLngs, {
+              color: '#10b981',
+              weight: 4,
+              opacity: 0.95,
+              lineCap: 'round',
+              lineJoin: 'round'
+            }).addTo(group);
+          }
+        }
+      });
 
     // 2. Render Discontinuous Gaps (GPS SIGNAL GAP breaks)
     gaps.forEach((gap) => {
@@ -263,10 +293,20 @@ export function RoutePlaybackMap({ points = [], session = {}, segments: inputSeg
       });
     }
 
-    // Fit map bounds
-    if (validPoints.length > 0) {
-      map.fitBounds(group.getBounds(), { padding: [40, 40], maxZoom: 16 });
+    // Fit map bounds safely
+    if (validPoints.length > 0 && group) {
+      try {
+        const bounds = group.getBounds();
+        if (bounds && typeof bounds.isValid === 'function' && bounds.isValid()) {
+          map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
+        }
+      } catch (fitErr) {
+        console.warn('fitBounds warning:', fitErr);
+      }
     }
+  } catch (err) {
+    console.warn('RoutePlaybackMap rendering error:', err);
+  }
   }, [points, session, inputSegments, inputGaps, showFiltered]);
 
   const validCount = points.filter((p) => p.is_filtered === 0).length;
@@ -336,5 +376,41 @@ export function RoutePlaybackMap({ points = [], session = {}, segments: inputSeg
         </div>
       )}
     </div>
+  );
+}
+
+// ─── Map Error Boundary Wrapper ─────────────────────────────────────────────
+class RouteMapErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(error, info) {
+    console.warn('RoutePlaybackMap caught error:', error, info);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="relative w-full h-[320px] rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 flex flex-col items-center justify-center p-6 text-center text-slate-400 gap-2">
+          <Navigation className="w-8 h-8 text-emerald-500/80" />
+          <h5 className="text-sm font-semibold text-slate-200">Interactive Map Telemetry Active</h5>
+          <p className="text-xs text-slate-500 max-w-sm">
+            Map display is temporarily unavailable in this view. Recorded breadcrumbs are verified on the server.
+          </p>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+export function SafeRoutePlaybackMap(props) {
+  return (
+    <RouteMapErrorBoundary>
+      <RoutePlaybackMap {...props} />
+    </RouteMapErrorBoundary>
   );
 }
