@@ -125,11 +125,34 @@ export async function initDatabase() {
       distance_selection_reason TEXT,
       conveyance_rate FLOAT,
       conveyance_amount FLOAT DEFAULT 0.0,
-      status TEXT NOT NULL DEFAULT 'ON_DUTY' CHECK(status IN ('ON_DUTY', 'PENDING_VERIFICATION', 'APPROVED', 'REJECTED', 'NEEDS_REVIEW')),
+      status TEXT NOT NULL DEFAULT 'ON_DUTY' CHECK(status IN ('ON_DUTY', 'PENDING_VERIFICATION', 'APPROVED', 'REJECTED', 'NEEDS_REVIEW', 'AUTO_ENDED')),
       review_notes TEXT,
       warnings TEXT DEFAULT '[]',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  // Ensure duty_sessions status check allows AUTO_ENDED on existing installations
+  try {
+    await db.query(`ALTER TABLE duty_sessions DROP CONSTRAINT IF EXISTS duty_sessions_status_check`);
+    await db.query(`ALTER TABLE duty_sessions ADD CONSTRAINT duty_sessions_status_check CHECK(status IN ('ON_DUTY', 'PENDING_VERIFICATION', 'APPROVED', 'REJECTED', 'NEEDS_REVIEW', 'AUTO_ENDED'))`);
+  } catch (err) {
+    // Constraint already updated or not applicable
+  }
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS attendance (
+      id TEXT PRIMARY KEY,
+      supervisor_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      attendance_date DATE NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('P', 'A', 'WO')),
+      duty_session_id TEXT REFERENCES duty_sessions(id) ON DELETE SET NULL,
+      source TEXT NOT NULL DEFAULT 'AUTO' CHECK(source IN ('AUTO', 'MANUAL', 'MIDNIGHT_AUTO_ABSENT')),
+      notes TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(supervisor_id, attendance_date)
     )
   `);
 
@@ -182,6 +205,8 @@ export async function initDatabase() {
   await db.query(`CREATE INDEX IF NOT EXISTS idx_duty_sessions_dates ON duty_sessions(start_time, end_time)`);
   await db.query(`CREATE INDEX IF NOT EXISTS idx_location_points_session ON location_points(duty_session_id, recorded_at)`);
   await db.query(`CREATE INDEX IF NOT EXISTS idx_audit_logs_session ON audit_logs(duty_session_id)`);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance(attendance_date)`);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_attendance_supervisor_date ON attendance(supervisor_id, attendance_date)`);
 
   console.log('✅ Database tables initialized (Supabase PostgreSQL)');
 }

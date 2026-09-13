@@ -33,6 +33,12 @@ export function StartDutyWizard({ onDutyStarted, onCancel }) {
       return;
     }
 
+    const startKm = parseFloat(odometerData?.finalKm);
+    if (odometerData?.finalKm === undefined || odometerData?.finalKm === null || isNaN(startKm) || startKm < 0) {
+      setError('Start KM is required to start duty.');
+      return;
+    }
+
     try {
       setSubmitting(true);
       setError(null);

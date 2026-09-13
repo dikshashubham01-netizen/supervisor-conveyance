@@ -155,6 +155,24 @@ export const api = {
     }
   },
 
+  attendance: {
+    getMonthly: (params = {}) => {
+      return request(`/attendance${toQueryString(params)}`);
+    },
+    getExcelUrl: (params = {}) => {
+      return `${API_BASE}/attendance/export/excel${toQueryString(params)}`;
+    },
+    getMonthlyConveyance: (params = {}) => {
+      return request(`/attendance/conveyance${toQueryString(params)}`);
+    },
+    getConveyanceExcelUrl: (params = {}) => {
+      return `${API_BASE}/attendance/conveyance/export/excel${toQueryString(params)}`;
+    },
+    triggerAutoEndCheck: () => {
+      return request('/attendance/auto-end-check', { method: 'POST' });
+    }
+  },
+
   settings: {
     getRate: () => request('/settings/rate'),
     updateRate: (ratePerKm, effectiveFrom) =>

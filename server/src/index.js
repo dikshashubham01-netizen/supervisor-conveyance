@@ -15,6 +15,8 @@ import settingsRoutes from './routes/settingsRoutes.js';
 import auditRoutes from './routes/auditRoutes.js';
 import ocrRoutes from './routes/ocrRoutes.js';
 import appVersionRoutes from './routes/appVersionRoutes.js';
+import attendanceRoutes from './routes/attendanceRoutes.js';
+import { initMidnightCron } from './services/cronService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -55,6 +57,7 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/ocr', ocrRoutes);
 app.use('/api/app', appVersionRoutes);
+app.use('/api/attendance', attendanceRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -76,6 +79,7 @@ const server = app.listen(config.port, () => {
   console.log(`🚀 Conveyance Monitoring API running on port ${config.port}`);
   console.log(`📡 Upload directory: ${config.uploadDir}`);
   console.log(`🗄️  Database: Supabase PostgreSQL`);
+  initMidnightCron();
 });
 
 server.on('error', (err) => {

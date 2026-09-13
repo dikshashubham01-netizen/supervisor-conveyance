@@ -95,6 +95,13 @@ export function getStatusBadge(status) {
         bg: 'bg-red-950/80 border-red-500/50 text-red-400',
         dot: 'bg-red-400'
       };
+    case 'AUTO_ENDED':
+      return {
+        label: 'AUTO ENDED - NO END DUTY',
+        icon: '⛔',
+        bg: 'bg-rose-950/80 border-rose-500/50 text-rose-300',
+        dot: 'bg-rose-400'
+      };
     default:
       return {
         label: status || 'UNKNOWN',

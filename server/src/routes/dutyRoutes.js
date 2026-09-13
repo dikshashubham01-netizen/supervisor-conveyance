@@ -5,6 +5,7 @@ import { authenticateToken, requireAdmin, requireSupervisor } from '../middlewar
 import { upload } from '../middleware/upload.js';
 import { cleanGpsPoints } from '../services/gpsCleaner.js';
 import { evaluateConveyance, getActiveRate } from '../services/conveyanceService.js';
+import { syncAttendanceForCompletedDuty } from '../services/attendanceService.js';
 
 const router = express.Router();
 
@@ -35,8 +36,24 @@ router.post(
 
       const { latitude, longitude, accuracy, odometerOcr, odometerManual, odometerFinal } = req.body;
 
+      if (odometerFinal === undefined || odometerFinal === null || String(odometerFinal).trim() === '') {
+        await db.run(
+          `INSERT INTO audit_logs (id, user_id, action, new_value, reason, created_at)
+           VALUES ($1, $2, 'START_DUTY_BLOCKED_MISSING_START_KM', 'Missing odometerFinal', 'Blocked start duty: Start KM is required', NOW())`,
+          [uuidv4(), supervisorId]
+        );
+        return res.status(400).json({ error: 'Start KM is required to start duty.' });
+      }
+
       const finalKm = parseFloat(odometerFinal);
-      if (isNaN(finalKm) || finalKm < 0) return res.status(400).json({ error: 'Valid confirmed start KM is required' });
+      if (isNaN(finalKm) || finalKm < 0) {
+        await db.run(
+          `INSERT INTO audit_logs (id, user_id, action, new_value, reason, created_at)
+           VALUES ($1, $2, 'START_DUTY_BLOCKED_MISSING_START_KM', $3, 'Blocked start duty: Start KM must be a valid numeric value >= 0', NOW())`,
+          [uuidv4(), supervisorId, String(odometerFinal)]
+        );
+        return res.status(400).json({ error: 'Start KM is required to start duty.' });
+      }
 
       const sessionId = uuidv4();
       const currentRate = await getActiveRate('Bike');
@@ -237,6 +254,8 @@ router.post(
           })
         ]
       );
+
+      await syncAttendanceForCompletedDuty(activeSession.id);
 
       const completed = await db.queryOne(
         `SELECT ds.*, u.name AS supervisor_name, u.employee_id

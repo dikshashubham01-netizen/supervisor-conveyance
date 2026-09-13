@@ -25,7 +25,7 @@ export function evaluateConveyance({
   endOdoOcr,
   endOdoManual,
   trackingGapMinutes = 0,
-  rate
+  rate = config.defaultBikeRate || 4.50
 }) {
   const warnings = [];
   let odometerDistance = null;

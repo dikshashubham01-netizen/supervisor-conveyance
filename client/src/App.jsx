@@ -16,6 +16,8 @@ import { DutySessionsPage } from './pages/admin/DutySessionsPage';
 import { ConveyanceSettingsPage } from './pages/admin/ConveyanceSettingsPage';
 import { ReportsPage } from './pages/admin/ReportsPage';
 import { AuditLogsPage } from './pages/admin/AuditLogsPage';
+import { AttendancePage } from './pages/admin/AttendancePage';
+import { MonthlyConveyancePage } from './pages/admin/MonthlyConveyancePage';
 
 import {
   LayoutDashboard,
@@ -26,7 +28,9 @@ import {
   Settings,
   History,
   Navigation,
-  Clock
+  Clock,
+  UserCheck,
+  Bike
 } from 'lucide-react';
 
 export default function App() {
@@ -135,6 +139,30 @@ export default function App() {
             </button>
 
             <button
+              onClick={() => setCurrentPage('attendance')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition ${
+                currentPage === 'attendance'
+                  ? 'bg-slate-800 text-white font-semibold shadow'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-850'
+              }`}
+            >
+              <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Attendance</span>
+            </button>
+
+            <button
+              onClick={() => setCurrentPage('conveyance')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition ${
+                currentPage === 'conveyance'
+                  ? 'bg-slate-800 text-white font-semibold shadow'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-850'
+              }`}
+            >
+              <Bike className="w-3.5 h-3.5 text-brand-400" />
+              <span>Conveyance</span>
+            </button>
+
+            <button
               onClick={() => setCurrentPage('reports')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition ${
                 currentPage === 'reports'
@@ -185,6 +213,8 @@ export default function App() {
             {currentPage === 'live-map' && <LiveMapPage />}
             {currentPage === 'supervisors' && <SupervisorsPage />}
             {currentPage === 'duty-sessions' && <DutySessionsPage />}
+            {currentPage === 'attendance' && <AttendancePage />}
+            {currentPage === 'conveyance' && <MonthlyConveyancePage />}
             {currentPage === 'reports' && <ReportsPage />}
             {currentPage === 'settings' && <ConveyanceSettingsPage />}
             {currentPage === 'audit-logs' && <AuditLogsPage />}

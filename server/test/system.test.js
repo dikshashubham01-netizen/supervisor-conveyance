@@ -126,7 +126,7 @@ test('7. 13-Column Reports structure and Excel export', () => {
   assert(excelBuffer.length > 1000);
 });
 
-test('8. Conveyance Rate locking on historical sessions', () => {
-  const initialRate = getActiveRate('Bike');
+test('8. Conveyance Rate locking on historical sessions', async () => {
+  const initialRate = await getActiveRate('Bike');
   assert.strictEqual(initialRate, 4.50);
 });
