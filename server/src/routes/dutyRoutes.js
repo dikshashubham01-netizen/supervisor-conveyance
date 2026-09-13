@@ -336,8 +336,8 @@ router.get('/:id', authenticateToken, async (req, res) => {
     }
 
     const auditLogs = await db.queryAll(
-      `SELECT al.*, u.name AS user_name, u.role AS user_role
-       FROM audit_logs al JOIN users u ON u.id = al.user_id
+      `SELECT al.*, COALESCE(u.name, 'System') AS user_name, COALESCE(u.role, 'system') AS user_role
+       FROM audit_logs al LEFT JOIN users u ON u.id = al.user_id
        WHERE al.duty_session_id = $1 ORDER BY al.created_at DESC`,
       [session.id]
     );
@@ -345,8 +345,8 @@ router.get('/:id', authenticateToken, async (req, res) => {
     const pointsCount = await db.queryOne(
       `SELECT
          COUNT(*) AS total_points,
-         SUM(CASE WHEN is_filtered = 0 THEN 1 ELSE 0 END) AS valid_points,
-         SUM(CASE WHEN is_filtered = 1 THEN 1 ELSE 0 END) AS filtered_points
+         COALESCE(SUM(CASE WHEN is_filtered = 0 THEN 1 ELSE 0 END), 0) AS valid_points,
+         COALESCE(SUM(CASE WHEN is_filtered = 1 THEN 1 ELSE 0 END), 0) AS filtered_points
        FROM location_points WHERE duty_session_id = $1`,
       [session.id]
     );

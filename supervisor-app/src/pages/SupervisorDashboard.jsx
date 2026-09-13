@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useDuty } from '../context/DutyContext';
 import { useOfflineQueue } from '../context/OfflineQueueContext';
@@ -6,7 +6,7 @@ import { useGeolocation } from '../hooks/useGeolocation';
 import { StartDutyWizard } from './StartDutyWizard';
 import { EndDutyWizard } from './EndDutyWizard';
 import { SupervisorHistory } from './SupervisorHistory';
-import { ServerConfigModal } from '../components/common/ServerConfigModal';
+import { ProfileModal } from '../components/profile/ProfileModal';
 import { formatCurrency, formatDistance, formatTime } from '../utils/formatters';
 import {
   Navigation,
@@ -18,7 +18,7 @@ import {
   RefreshCw,
   History,
   Shield,
-  Settings,
+  User,
   LogOut,
   AlertCircle,
   Wifi,
@@ -30,9 +30,8 @@ import { UpdateModal } from '../components/common/UpdateModal';
 
 import { checkDeveloperOptions, stopBackgroundTracking } from '../utils/backgroundTracking';
 import SecurityScreen from '../components/common/SecurityScreen';
-import { getServerUrl, getToken } from '../api/client';
-
-const CURRENT_APP_VERSION = '1.0.3';
+import { api, getServerUrl, getToken } from '../api/client';
+import { getInstalledAppInfo, isNewerVersion, FALLBACK_APP_VERSION, FALLBACK_VERSION_CODE } from '../utils/versionCheck';
 
 export function SupervisorDashboard() {
   const { user, logout } = useAuth();
@@ -40,7 +39,11 @@ export function SupervisorDashboard() {
   const { isOnline, pendingCount, isSyncing, triggerSync } = useOfflineQueue();
 
   const [viewState, setViewState] = useState('dashboard'); // 'dashboard' | 'start' | 'end' | 'history'
-  const [isServerModalOpen, setIsServerModalOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [installedAppInfo, setInstalledAppInfo] = useState({
+    version: FALLBACK_APP_VERSION,
+    versionCode: FALLBACK_VERSION_CODE
+  });
   const [remoteVersionInfo, setRemoteVersionInfo] = useState(null);
   const [hasUpdate, setHasUpdate] = useState(false);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
@@ -83,17 +86,23 @@ export function SupervisorDashboard() {
     return () => clearInterval(timer);
   }, [checkDevMode]);
 
-  // Check for app updates
+  // Check for app updates using dynamic native version and semver comparison
   useEffect(() => {
     async function checkForUpdates() {
       try {
-        const res = await fetch(`https://supervisor-conveyance.vercel.app/version.json?t=${Date.now()}`);
-        if (res.ok) {
-          const data = await res.json();
-          setRemoteVersionInfo(data);
-          if (data.version && data.version !== CURRENT_APP_VERSION) {
-            setHasUpdate(true);
-          }
+        const installed = await getInstalledAppInfo();
+        setInstalledAppInfo(installed);
+
+        const remote = await api.version.check();
+        if (remote) {
+          setRemoteVersionInfo(remote);
+          const needsUpdate = isNewerVersion(
+            remote.version,
+            installed.version,
+            remote.versionCode,
+            installed.versionCode
+          );
+          setHasUpdate(needsUpdate);
         }
       } catch (e) {
         console.warn('Update check failed:', e);
@@ -162,15 +171,23 @@ export function SupervisorDashboard() {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => setIsServerModalOpen(true)}
-            className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white"
-            title="Server Host Settings"
+            onClick={() => setIsProfileOpen(true)}
+            className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-brand-400 hover:text-white"
+            title="My Profile"
           >
-            <Settings className="w-4 h-4" />
+            <User className="w-4 h-4" />
           </button>
           <button
             type="button"
-            onClick={logout}
+            onClick={() => {
+              if (isOnDuty) {
+                const confirmed = window.confirm(
+                  'You have an active duty session in progress! Are you sure you want to log out? Your session remains active on the server.'
+                );
+                if (!confirmed) return;
+              }
+              logout();
+            }}
             className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-rose-400 hover:text-rose-300"
             title="Sign Out"
           >
@@ -397,23 +414,24 @@ export function SupervisorDashboard() {
 
         <button
           type="button"
-          onClick={() => setIsServerModalOpen(true)}
+          onClick={() => setIsProfileOpen(true)}
           className="py-3 px-2 rounded-2xl bg-slate-900 border border-slate-800 text-slate-300 font-bold text-xs flex flex-col items-center justify-center gap-1 shadow"
         >
-          <Settings className="w-4 h-4 text-slate-400" />
-          <span>Settings</span>
+          <User className="w-4 h-4 text-brand-400" />
+          <span>Profile</span>
         </button>
       </div>
 
-      <ServerConfigModal
-        isOpen={isServerModalOpen}
-        onClose={() => setIsServerModalOpen(false)}
+      <ProfileModal
+        isOpen={isProfileOpen}
+        onClose={() => setIsProfileOpen(false)}
       />
 
       <UpdateModal
         isOpen={isUpdateModalOpen}
         onClose={() => setIsUpdateModalOpen(false)}
-        currentVersion={CURRENT_APP_VERSION}
+        currentVersion={installedAppInfo.version}
+        currentVersionCode={installedAppInfo.versionCode}
         remoteInfo={remoteVersionInfo}
       />
     </div>

@@ -6,12 +6,12 @@ const router = express.Router();
 
 const DEFAULT_VERSION = {
   id: 'latest',
-  version: '1.0.3',
-  version_code: 4,
+  version: '1.0.4',
+  version_code: 5,
   min_supported_version: '1.0.0',
   apk_url: 'https://supervisor-conveyance.vercel.app/Supervisor-App.apk',
   download_page_url: 'https://supervisor-conveyance.vercel.app/download',
-  changelog: 'Continuous Native Background GPS Service, live IST time display fix, and in-dashboard auto-update prompt.',
+  changelog: 'Removed server settings, added user profile with password update and secure logout, improved telemetry stability.',
   release_date: new Date().toISOString()
 };
 

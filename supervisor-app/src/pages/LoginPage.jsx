@@ -1,11 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
-import { ServerConfigModal } from '../components/common/ServerConfigModal';
 import { UpdateModal } from '../components/common/UpdateModal';
-import { Navigation, User, Lock, ArrowRight, Settings, AlertCircle, Eye, EyeOff, Sparkles, RefreshCw, ArrowUpCircle } from 'lucide-react';
-
-const CURRENT_APP_VERSION = '1.0.1';
+import { Navigation, User, Lock, ArrowRight, AlertCircle, Eye, EyeOff, Sparkles, RefreshCw, ArrowUpCircle } from 'lucide-react';
+import { getInstalledAppInfo, isNewerVersion, FALLBACK_APP_VERSION, FALLBACK_VERSION_CODE } from '../utils/versionCheck';
 
 export function LoginPage() {
   const { login } = useAuth();
@@ -16,10 +14,13 @@ export function LoginPage() {
   const [error, setError] = useState(null);
 
   // Modals
-  const [isServerModalOpen, setIsServerModalOpen] = useState(false);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
 
   // Version & Updates
+  const [installedAppInfo, setInstalledAppInfo] = useState({
+    version: FALLBACK_APP_VERSION,
+    versionCode: FALLBACK_VERSION_CODE
+  });
   const [remoteVersionInfo, setRemoteVersionInfo] = useState(null);
   const [hasUpdate, setHasUpdate] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
@@ -28,10 +29,18 @@ export function LoginPage() {
   const checkUpdates = async (openModalOnFinish = false) => {
     setCheckingUpdate(true);
     try {
+      const installed = await getInstalledAppInfo();
+      setInstalledAppInfo(installed);
+
       const info = await api.version.check();
       if (info) {
         setRemoteVersionInfo(info);
-        const isNew = info.version && info.version !== CURRENT_APP_VERSION;
+        const isNew = isNewerVersion(
+          info.version,
+          installed.version,
+          info.versionCode,
+          installed.versionCode
+        );
         setHasUpdate(isNew);
         if (openModalOnFinish) {
           setIsUpdateModalOpen(true);
@@ -91,18 +100,8 @@ export function LoginPage() {
             ) : (
               <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
             )}
-            <span>v{CURRENT_APP_VERSION}</span>
+            <span>v{installedAppInfo.version}</span>
             {hasUpdate && <span className="font-bold text-emerald-300">Update!</span>}
-          </button>
-
-          {/* Server Settings */}
-          <button
-            type="button"
-            onClick={() => setIsServerModalOpen(true)}
-            className="p-2 rounded-xl bg-[#1e293b] border border-[#334155] text-[#94a3b8] active:opacity-70"
-            title="Server Settings"
-          >
-            <Settings className="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -230,20 +229,15 @@ export function LoginPage() {
 
       {/* Footer */}
       <div className="text-center text-[11px] text-[#475569] py-2">
-        GeoConvey Supervisor App • v{CURRENT_APP_VERSION} • Live Cloud
+        GeoConvey Supervisor App • v{installedAppInfo.version} • Live Cloud
       </div>
-
-      {/* Server Config Modal */}
-      <ServerConfigModal
-        isOpen={isServerModalOpen}
-        onClose={() => setIsServerModalOpen(false)}
-      />
 
       {/* In-App Update Modal */}
       <UpdateModal
         isOpen={isUpdateModalOpen}
         onClose={() => setIsUpdateModalOpen(false)}
-        currentVersion={CURRENT_APP_VERSION}
+        currentVersion={installedAppInfo.version}
+        currentVersionCode={installedAppInfo.versionCode}
         remoteInfo={remoteVersionInfo}
       />
     </div>

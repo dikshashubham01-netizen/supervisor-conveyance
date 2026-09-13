@@ -91,7 +91,12 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ employee_id, password })
       }),
-    me: () => request('/auth/me')
+    me: () => request('/auth/me'),
+    changePassword: (currentPassword, newPassword) =>
+      request('/auth/change-password', {
+        method: 'POST',
+        body: JSON.stringify({ currentPassword, newPassword })
+      })
   },
 
   duty: {
@@ -132,11 +137,19 @@ export const api = {
     check: async () => {
       const server = getServerUrl();
       try {
-        const res = await fetch(`${server}/api/app/version`, { signal: AbortSignal.timeout(4000) });
+        const res = await fetch(`${server}/api/app/version?t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache' },
+          signal: AbortSignal.timeout(5000)
+        });
         if (res.ok) return await res.json();
       } catch (e) {
         try {
-          const res = await fetch('https://supervisor-conveyance.vercel.app/version.json', { signal: AbortSignal.timeout(4000) });
+          const res = await fetch(`https://supervisor-conveyance.vercel.app/version.json?t=${Date.now()}`, {
+            cache: 'no-store',
+            headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache' },
+            signal: AbortSignal.timeout(5000)
+          });
           if (res.ok) return await res.json();
         } catch (fallbackErr) {
           console.warn('Version check error:', fallbackErr);

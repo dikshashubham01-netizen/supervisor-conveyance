@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Download, Sparkles, CheckCircle2, AlertCircle, ExternalLink, X, Smartphone, ArrowDownCircle } from 'lucide-react';
+import { isNewerVersion } from '../../utils/versionCheck';
 
-export function UpdateModal({ isOpen, onClose, currentVersion, remoteInfo }) {
+export function UpdateModal({ isOpen, onClose, currentVersion, currentVersionCode, remoteInfo }) {
   const [downloading, setDownloading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [downloadedMb, setDownloadedMb] = useState(0);
@@ -11,8 +12,9 @@ export function UpdateModal({ isOpen, onClose, currentVersion, remoteInfo }) {
 
   if (!isOpen) return null;
 
-  const latestVersion = remoteInfo?.version || '1.0.1';
-  const hasUpdate = latestVersion !== currentVersion;
+  const latestVersion = remoteInfo?.version || currentVersion || '1.0.4';
+  const latestVersionCode = remoteInfo?.versionCode;
+  const hasUpdate = isNewerVersion(latestVersion, currentVersion, latestVersionCode, currentVersionCode);
   const downloadPageUrl = remoteInfo?.downloadUrl || 'https://supervisor-conveyance.vercel.app/download';
   const apkUrl = remoteInfo?.apkUrl || 'https://supervisor-conveyance.vercel.app/Supervisor-App.apk';
   const changelog = remoteInfo?.changelog || 'Latest performance enhancements, live GPS tracking sync, and auto-update support.';

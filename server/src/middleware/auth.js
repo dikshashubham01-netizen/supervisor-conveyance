@@ -18,7 +18,7 @@ export function authenticateToken(req, res, next) {
     try {
       // Verify user exists and is active in PostgreSQL
       const dbUser = await db.queryOne(
-        'SELECT id, employee_id, name, role, status FROM users WHERE id = $1',
+        'SELECT id, employee_id, name, phone, role, status FROM users WHERE id = $1',
         [user.id]
       );
 

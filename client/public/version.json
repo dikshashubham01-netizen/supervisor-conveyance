@@ -1,9 +1,9 @@
 {
-  "version": "1.0.3",
-  "versionCode": 4,
+  "version": "1.0.4",
+  "versionCode": 5,
   "minSupportedVersion": "1.0.0",
   "apkUrl": "https://supervisor-conveyance.vercel.app/Supervisor-App.apk",
   "downloadUrl": "https://supervisor-conveyance.vercel.app/download",
-  "changelog": "Continuous Native Background GPS Service, live IST time display fix, and in-dashboard auto-update prompt.",
-  "releaseDate": "2026-09-03"
+  "changelog": "Removed server settings, added user profile with password update and secure logout, improved telemetry stability.",
+  "releaseDate": "2026-09-14"
 }

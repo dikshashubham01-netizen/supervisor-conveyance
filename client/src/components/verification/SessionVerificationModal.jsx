@@ -21,7 +21,8 @@ export function SessionVerificationModal({ isOpen, onClose, sessionId, onActionC
   const [details, setDetails] = useState(null);
   const [routePoints, setRoutePoints] = useState([]);
   const [routeData, setRouteData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   // Override / Action state
   const [isOverriding, setIsOverriding] = useState(false);
@@ -30,33 +31,54 @@ export function SessionVerificationModal({ isOpen, onClose, sessionId, onActionC
   const [reviewNotes, setReviewNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  const loadData = async () => {
+    if (!sessionId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const [detailResult, routeResult] = await Promise.allSettled([
+        api.duty.getDetails(sessionId),
+        api.tracking.getRoute(sessionId)
+      ]);
+
+      if (detailResult.status === 'fulfilled' && detailResult.value?.session) {
+        setDetails(detailResult.value);
+        setOverrideKm(detailResult.value.session.approved_distance_km ?? '');
+      } else {
+        const errMessage =
+          detailResult.reason?.message ||
+          detailResult.value?.error ||
+          'Unable to load session telemetry.';
+        console.error('Failed to load session details:', detailResult.reason || detailResult.value);
+        setError(errMessage);
+        return;
+      }
+
+      if (routeResult.status === 'fulfilled' && routeResult.value) {
+        setRoutePoints(routeResult.value.points || []);
+        setRouteData(routeResult.value);
+      } else {
+        console.warn('Telemetry route not loaded or unavailable:', routeResult.reason);
+        setRoutePoints([]);
+        setRouteData({ points: [], segments: [], gaps: [] });
+      }
+    } catch (err) {
+      console.error('Failed to load session details:', err);
+      setError(err.message || 'Unable to load session telemetry.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (!isOpen || !sessionId) {
       setDetails(null);
       setRoutePoints([]);
       setRouteData(null);
       setIsOverriding(false);
+      setError(null);
+      setLoading(false);
       return;
-    }
-
-    async function loadData() {
-      setLoading(true);
-      try {
-        const [detailRes, routeRes] = await Promise.all([
-          api.duty.getDetails(sessionId),
-          api.tracking.getRoute(sessionId)
-        ]);
-        setDetails(detailRes);
-        setRoutePoints(routeRes.points || []);
-        setRouteData(routeRes);
-        if (detailRes.session) {
-          setOverrideKm(detailRes.session.approved_distance_km ?? '');
-        }
-      } catch (err) {
-        console.error('Failed to load session details:', err);
-      } finally {
-        setLoading(false);
-      }
     }
 
     loadData();
@@ -96,7 +118,16 @@ export function SessionVerificationModal({ isOpen, onClose, sessionId, onActionC
 
   const session = details?.session;
   const auditLogs = details?.auditLogs || [];
-  const warnings = session?.warnings ? (typeof session.warnings === 'string' ? JSON.parse(session.warnings) : session.warnings) : [];
+  let warnings = [];
+  try {
+    if (Array.isArray(session?.warnings)) {
+      warnings = session.warnings;
+    } else if (typeof session?.warnings === 'string') {
+      warnings = JSON.parse(session.warnings);
+    }
+  } catch (e) {
+    warnings = [];
+  }
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Duty Session Verification & Audit" maxWidth="max-w-4xl">
@@ -105,8 +136,34 @@ export function SessionVerificationModal({ isOpen, onClose, sessionId, onActionC
           <div className="w-8 h-8 border-3 border-brand-500 border-t-transparent rounded-full animate-spin" />
           <span className="text-sm text-slate-400">Loading session telemetry...</span>
         </div>
+      ) : error ? (
+        <div className="p-10 text-center flex flex-col items-center justify-center gap-4">
+          <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-full text-rose-400">
+            <AlertTriangle className="w-8 h-8" />
+          </div>
+          <div>
+            <h4 className="text-base font-semibold text-slate-200 mb-1">Unable to load session telemetry.</h4>
+            <p className="text-xs text-slate-400 max-w-md mx-auto">{error}</p>
+          </div>
+          <button
+            type="button"
+            onClick={loadData}
+            className="px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold rounded-lg transition"
+          >
+            Retry
+          </button>
+        </div>
       ) : !session ? (
-        <div className="p-6 text-center text-slate-400">Session data could not be found.</div>
+        <div className="p-8 text-center flex flex-col items-center justify-center gap-3">
+          <p className="text-sm text-slate-400">No telemetry data available for this duty session.</p>
+          <button
+            type="button"
+            onClick={loadData}
+            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-lg transition border border-slate-700"
+          >
+            Retry
+          </button>
+        </div>
       ) : (
         <div className="flex flex-col gap-6 text-slate-200">
           {/* Header Summary Strip */}
@@ -179,9 +236,9 @@ export function SessionVerificationModal({ isOpen, onClose, sessionId, onActionC
                     <div className="w-full h-full flex items-center justify-center text-xs text-slate-600">No photo</div>
                   )}
                 </div>
-                {session.start_latitude && (
+                {session.start_latitude != null && session.start_longitude != null && (
                   <div className="text-[11px] text-slate-400 font-mono">
-                    GPS: {session.start_latitude.toFixed(4)}, {session.start_longitude.toFixed(4)}
+                    GPS: {Number(session.start_latitude).toFixed(4)}, {Number(session.start_longitude).toFixed(4)}
                   </div>
                 )}
               </div>
@@ -205,9 +262,9 @@ export function SessionVerificationModal({ isOpen, onClose, sessionId, onActionC
                     </div>
                   )}
                 </div>
-                {session.end_latitude && (
+                {session.end_latitude != null && session.end_longitude != null && (
                   <div className="text-[11px] text-slate-400 font-mono">
-                    GPS: {session.end_latitude.toFixed(4)}, {session.end_longitude.toFixed(4)}
+                    GPS: {Number(session.end_latitude).toFixed(4)}, {Number(session.end_longitude).toFixed(4)}
                   </div>
                 )}
               </div>
@@ -281,12 +338,20 @@ export function SessionVerificationModal({ isOpen, onClose, sessionId, onActionC
               <Navigation className="w-4 h-4 text-emerald-400" />
               3. GPS Route & Distance Verification
             </h5>
-            <RoutePlaybackMap
-              points={routePoints}
-              session={session}
-              segments={routeData?.segments}
-              gaps={routeData?.gaps}
-            />
+            {routePoints && routePoints.length > 0 ? (
+              <RoutePlaybackMap
+                points={routePoints}
+                session={session}
+                segments={routeData?.segments}
+                gaps={routeData?.gaps}
+              />
+            ) : (
+              <div className="p-8 rounded-xl bg-slate-850 border border-slate-800 text-center flex flex-col items-center justify-center gap-2">
+                <Navigation className="w-8 h-8 text-slate-500" />
+                <p className="text-sm font-semibold text-slate-300">No telemetry data available for this duty session.</p>
+                <span className="text-xs text-slate-500">No recorded GPS breadcrumb points were logged for this session.</span>
+              </div>
+            )}
           </div>
 
           {/* SECTION 4: Distance & Conveyance Calculation Breakdown */}
