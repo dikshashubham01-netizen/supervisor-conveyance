@@ -515,3 +515,190 @@ export function generateMonthlyConveyanceExcel(matrixData) {
 
   return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
 }
+
+/**
+ * 7. Single Supervisor Monthly Attendance & Day-wise Bike Run
+ * Returns calendar day-by-day attendance status, duty timings, start/end odometer,
+ * approved KM run on bike, conveyance earned, and monthly totals.
+ */
+export async function getSupervisorMonthlyAttendanceAndConveyance({ supervisorId, year, month }) {
+  const numYear = Number(year) || new Date().getFullYear();
+  const numMonth = Number(month) || (new Date().getMonth() + 1);
+
+  const daysInMonth = getDaysInMonth(numYear, numMonth);
+  const monthName = MONTH_NAMES[numMonth - 1] || 'Unknown';
+  const todayIST = getISTDateString(new Date());
+
+  const supervisor = await db.queryOne(
+    `SELECT id, name, employee_id, phone FROM users WHERE id = $1`,
+    [supervisorId]
+  );
+  if (!supervisor) {
+    throw new Error('Supervisor not found');
+  }
+
+  // Fetch all attendance records for this supervisor in this month
+  const attendanceRecords = await db.queryAll(
+    `SELECT attendance_date::text AS attendance_date, status, source, notes
+     FROM attendance
+     WHERE supervisor_id = $1
+       AND EXTRACT(YEAR FROM attendance_date) = $2
+       AND EXTRACT(MONTH FROM attendance_date) = $3`,
+    [supervisorId, numYear, numMonth]
+  );
+  const attMap = new Map();
+  for (const att of attendanceRecords) {
+    attMap.set(att.attendance_date, att);
+  }
+
+  // Fetch all duty sessions for this supervisor in this month
+  const dutySessions = await db.queryAll(
+    `SELECT id,
+            (start_time AT TIME ZONE 'Asia/Kolkata')::date::text AS duty_date,
+            start_time, end_time,
+            start_odometer_final, end_odometer_final,
+            start_latitude, start_longitude, end_latitude, end_longitude,
+            gps_distance_km, odometer_distance_km, approved_distance_km,
+            conveyance_rate, conveyance_amount, status, warnings
+     FROM duty_sessions
+     WHERE supervisor_id = $1
+       AND EXTRACT(YEAR FROM (start_time AT TIME ZONE 'Asia/Kolkata')) = $2
+       AND EXTRACT(MONTH FROM (start_time AT TIME ZONE 'Asia/Kolkata')) = $3
+     ORDER BY start_time ASC`,
+    [supervisorId, numYear, numMonth]
+  );
+
+  const dutyMap = new Map();
+  for (const ds of dutySessions) {
+    if (!dutyMap.has(ds.duty_date)) {
+      dutyMap.set(ds.duty_date, []);
+    }
+    dutyMap.get(ds.duty_date).push(ds);
+  }
+
+  const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const days = [];
+  let presentDays = 0;
+  let absentDays = 0;
+  let weekOffDays = 0;
+  let totalApprovedKm = 0;
+  let totalConveyance = 0;
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateObj = new Date(Date.UTC(numYear, numMonth - 1, d));
+    const dateStr = `${numYear}-${String(numMonth).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const dayOfWeek = dateObj.getUTCDay(); // 0 = Sunday
+    const isSunday = dayOfWeek === 0;
+    const isToday = dateStr === todayIST;
+    const isFuture = dateStr > todayIST;
+
+    const attRecord = attMap.get(dateStr);
+    const sessions = dutyMap.get(dateStr) || [];
+    const primarySession = sessions.length > 0 ? sessions[sessions.length - 1] : null;
+
+    let dayApprovedKm = 0;
+    let dayConveyance = 0;
+    let hasCompletedOrValidDuty = false;
+    let isOnDuty = false;
+
+    for (const s of sessions) {
+      if (s.status === 'ON_DUTY') {
+        isOnDuty = true;
+      }
+      hasCompletedOrValidDuty = true;
+      const km = Number(s.approved_distance_km ?? s.gps_distance_km ?? 0);
+      const amount = Number(s.conveyance_amount ?? (km * (Number(s.conveyance_rate) || 4.5))) || 0;
+      dayApprovedKm += km;
+      if (s.status !== 'REJECTED') {
+        dayConveyance += amount;
+      }
+    }
+
+    dayApprovedKm = Number(dayApprovedKm.toFixed(2));
+    dayConveyance = Number(dayConveyance.toFixed(2));
+
+    let statusCode = 'UPCOMING';
+    let statusLabel = 'Upcoming';
+
+    if (isFuture) {
+      statusCode = isSunday ? 'WO' : 'UPCOMING';
+      statusLabel = isSunday ? 'Week off' : 'Upcoming';
+    } else if (isSunday) {
+      weekOffDays++;
+      if (attRecord?.status === 'P' || hasCompletedOrValidDuty || isOnDuty) {
+        statusCode = 'P';
+        statusLabel = 'Present (Worked on Sunday)';
+        presentDays++;
+      } else {
+        statusCode = 'WO';
+        statusLabel = 'Week off';
+      }
+    } else {
+      // Working day
+      if (attRecord?.status === 'P' || hasCompletedOrValidDuty || isOnDuty) {
+        statusCode = 'P';
+        statusLabel = isOnDuty ? 'On Duty' : 'Present';
+        presentDays++;
+      } else {
+        statusCode = 'A';
+        statusLabel = 'Absent';
+        absentDays++;
+      }
+    }
+
+    totalApprovedKm += dayApprovedKm;
+    totalConveyance += dayConveyance;
+
+    days.push({
+      dateStr,
+      dayNumber: d,
+      dayOfWeek,
+      dayName: DAY_NAMES[dayOfWeek],
+      isWeeklyOff: isSunday,
+      isToday,
+      isFuture,
+      statusCode,
+      statusLabel,
+      approvedKm: dayApprovedKm,
+      conveyanceAmount: dayConveyance,
+      session: primarySession ? {
+        id: primarySession.id,
+        status: primarySession.status,
+        startTime: primarySession.start_time,
+        endTime: primarySession.end_time,
+        startKm: primarySession.start_odometer_final,
+        endKm: primarySession.end_odometer_final,
+        gpsDistanceKm: Number(primarySession.gps_distance_km) || 0,
+        odometerDistanceKm: Number(primarySession.odometer_distance_km) || 0,
+        approvedDistanceKm: Number(primarySession.approved_distance_km) || 0,
+        conveyanceAmount: Number(primarySession.conveyance_amount) || 0,
+        conveyanceRate: Number(primarySession.conveyance_rate) || 4.5
+      } : null
+    });
+  }
+
+  totalApprovedKm = Number(totalApprovedKm.toFixed(2));
+  totalConveyance = Number(totalConveyance.toFixed(2));
+
+  return {
+    supervisor: {
+      id: supervisor.id,
+      name: supervisor.name,
+      employeeId: supervisor.employee_id
+    },
+    year: numYear,
+    month: numMonth,
+    monthName,
+    daysInMonth,
+    days,
+    summary: {
+      totalDays: daysInMonth,
+      presentDays,
+      absentDays,
+      weekOffDays,
+      totalApprovedKm,
+      totalConveyance
+    }
+  };
+}
+

@@ -6,6 +6,7 @@ import { useGeolocation } from '../hooks/useGeolocation';
 import { StartDutyWizard } from './StartDutyWizard';
 import { EndDutyWizard } from './EndDutyWizard';
 import { SupervisorHistory } from './SupervisorHistory';
+import { SupervisorAttendance } from './SupervisorAttendance';
 import { ProfileModal } from '../components/profile/ProfileModal';
 import { formatCurrency, formatDistance, formatTime } from '../utils/formatters';
 import {
@@ -24,7 +25,8 @@ import {
   Wifi,
   WifiOff,
   Sparkles,
-  Download
+  Download,
+  Calendar
 } from 'lucide-react';
 import { UpdateModal } from '../components/common/UpdateModal';
 
@@ -152,6 +154,10 @@ export function SupervisorDashboard() {
 
   if (viewState === 'history') {
     return <SupervisorHistory onBack={() => setViewState('dashboard')} />;
+  }
+
+  if (viewState === 'attendance') {
+    return <SupervisorAttendance onBack={() => setViewState('dashboard')} />;
   }
 
   return (
@@ -389,11 +395,20 @@ export function SupervisorDashboard() {
       )}
 
       {/* Bottom Nav / Actions */}
-      <div className="grid grid-cols-3 gap-2 pt-2">
+      <div className="grid grid-cols-4 gap-1.5 pt-2">
+        <button
+          type="button"
+          onClick={() => setViewState('attendance')}
+          className="py-3 px-1.5 rounded-2xl bg-slate-900 border border-slate-800 text-slate-300 font-bold text-[11px] flex flex-col items-center justify-center gap-1 shadow hover:border-emerald-500/50 hover:text-emerald-400 active:scale-95 transition"
+        >
+          <Calendar className="w-4 h-4 text-emerald-400" />
+          <span>Attendance</span>
+        </button>
+
         <button
           type="button"
           onClick={() => setViewState('history')}
-          className="py-3 px-2 rounded-2xl bg-slate-900 border border-slate-800 text-slate-300 font-bold text-xs flex flex-col items-center justify-center gap-1 shadow"
+          className="py-3 px-1.5 rounded-2xl bg-slate-900 border border-slate-800 text-slate-300 font-bold text-[11px] flex flex-col items-center justify-center gap-1 shadow hover:border-brand-500/50 hover:text-brand-400 active:scale-95 transition"
         >
           <History className="w-4 h-4 text-brand-400" />
           <span>History</span>
@@ -402,20 +417,20 @@ export function SupervisorDashboard() {
         <button
           type="button"
           onClick={() => setIsUpdateModalOpen(true)}
-          className={`py-3 px-2 rounded-2xl border text-xs font-bold flex flex-col items-center justify-center gap-1 shadow transition ${
+          className={`py-3 px-1.5 rounded-2xl border text-[11px] font-bold flex flex-col items-center justify-center gap-1 shadow transition active:scale-95 ${
             hasUpdate
               ? 'bg-emerald-950 border-emerald-500 text-emerald-300 animate-pulse'
               : 'bg-slate-900 border-slate-800 text-slate-300'
           }`}
         >
           <Download className="w-4 h-4 text-emerald-400" />
-          <span>Update App</span>
+          <span>Update</span>
         </button>
 
         <button
           type="button"
           onClick={() => setIsProfileOpen(true)}
-          className="py-3 px-2 rounded-2xl bg-slate-900 border border-slate-800 text-slate-300 font-bold text-xs flex flex-col items-center justify-center gap-1 shadow"
+          className="py-3 px-1.5 rounded-2xl bg-slate-900 border border-slate-800 text-slate-300 font-bold text-[11px] flex flex-col items-center justify-center gap-1 shadow hover:border-brand-500/50 hover:text-brand-400 active:scale-95 transition"
         >
           <User className="w-4 h-4 text-brand-400" />
           <span>Profile</span>

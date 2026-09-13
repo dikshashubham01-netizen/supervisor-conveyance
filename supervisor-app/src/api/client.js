@@ -133,6 +133,11 @@ export const api = {
       })
   },
 
+  attendance: {
+    getMyAttendance: (params = {}) =>
+      request(`/attendance/my-attendance${toQueryString(params)}`)
+  },
+
   version: {
     check: async () => {
       const server = getServerUrl();

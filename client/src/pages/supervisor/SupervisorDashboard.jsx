@@ -7,6 +7,7 @@ import { useWakeLock } from '../../hooks/useWakeLock';
 import { StartDutyWizard } from './StartDutyWizard';
 import { EndDutyWizard } from './EndDutyWizard';
 import { SupervisorHistory } from './SupervisorHistory';
+import { SupervisorAttendance } from './SupervisorAttendance';
 import { formatCurrency, formatDistance, formatTime } from '../../utils/formatters';
 import {
   Navigation,
@@ -21,7 +22,8 @@ import {
   Sun,
   MapPin,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Calendar
 } from 'lucide-react';
 
 export function SupervisorDashboard() {
@@ -112,6 +114,10 @@ export function SupervisorDashboard() {
     );
   }
 
+  if (viewState === 'attendance') {
+    return <SupervisorAttendance onBack={() => setViewState('dashboard')} />;
+  }
+
   return (
     <div className="max-w-2xl mx-auto p-4 sm:p-6 flex flex-col gap-6">
       {/* Welcome Banner */}
@@ -123,14 +129,25 @@ export function SupervisorDashboard() {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setViewState('history')}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-semibold border border-slate-700 transition"
-        >
-          <History className="w-4 h-4 text-brand-400" />
-          <span>My History</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setViewState('attendance')}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-emerald-400 text-xs font-semibold border border-emerald-500/30 hover:border-emerald-500/60 transition shadow-sm"
+          >
+            <Calendar className="w-4 h-4 text-emerald-400" />
+            <span>Attendance</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setViewState('history')}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-semibold border border-slate-700 transition"
+          >
+            <History className="w-4 h-4 text-brand-400" />
+            <span>My History</span>
+          </button>
+        </div>
       </div>
 
       {/* GPS Error Alert if any */}

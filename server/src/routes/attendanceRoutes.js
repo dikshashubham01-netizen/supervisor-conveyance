@@ -5,10 +5,31 @@ import {
   getMonthlyConveyanceMatrix,
   generateAttendanceExcel,
   generateMonthlyConveyanceExcel,
-  autoEndLingeringDutySessions
+  autoEndLingeringDutySessions,
+  getSupervisorMonthlyAttendanceAndConveyance
 } from '../services/attendanceService.js';
 
 const router = express.Router();
+
+/**
+ * 0. Supervisor's Own Monthly Attendance & Day-wise Bike Run
+ * GET /api/attendance/my-attendance?year=2026&month=9
+ */
+router.get('/my-attendance', authenticateToken, async (req, res) => {
+  try {
+    const { year, month, supervisorId } = req.query;
+    const targetSupervisorId = req.user.role === 'admin' && supervisorId ? supervisorId : req.user.id;
+    const data = await getSupervisorMonthlyAttendanceAndConveyance({
+      supervisorId: targetSupervisorId,
+      year,
+      month
+    });
+    res.json(data);
+  } catch (err) {
+    console.error('My attendance query error:', err);
+    res.status(500).json({ error: 'Failed to fetch attendance: ' + err.message });
+  }
+});
 
 /**
  * 1. Monthly Attendance Grid Data

@@ -170,6 +170,9 @@ export const api = {
     },
     triggerAutoEndCheck: () => {
       return request('/attendance/auto-end-check', { method: 'POST' });
+    },
+    getMyAttendance: (params = {}) => {
+      return request(`/attendance/my-attendance${toQueryString(params)}`);
     }
   },
 

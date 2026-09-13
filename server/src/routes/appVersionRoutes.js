@@ -6,12 +6,12 @@ const router = express.Router();
 
 const DEFAULT_VERSION = {
   id: 'latest',
-  version: '1.0.5',
-  version_code: 6,
+  version: '1.0.6',
+  version_code: 7,
   min_supported_version: '1.0.0',
   apk_url: 'https://supervisor-conveyance.vercel.app/Supervisor-App.apk',
   download_page_url: 'https://supervisor-conveyance.vercel.app/download',
-  changelog: 'Fixed startup stability, enhanced ErrorBoundary, user profile with password update and secure logout.',
+  changelog: 'Added monthly Attendance & day-wise bike run KM calendar with conveyance calculation for supervisors.',
   release_date: new Date().toISOString()
 };
 
