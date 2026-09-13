@@ -12,7 +12,7 @@ export function UpdateModal({ isOpen, onClose, currentVersion, currentVersionCod
 
   if (!isOpen) return null;
 
-  const latestVersion = remoteInfo?.version || currentVersion || '1.0.4';
+  const latestVersion = remoteInfo?.version || currentVersion || '1.0.5';
   const latestVersionCode = remoteInfo?.versionCode;
   const hasUpdate = isNewerVersion(latestVersion, currentVersion, latestVersionCode, currentVersionCode);
   const downloadPageUrl = remoteInfo?.downloadUrl || 'https://supervisor-conveyance.vercel.app/download';

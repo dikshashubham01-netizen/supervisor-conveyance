@@ -1,9 +1,9 @@
 {
-  "version": "1.0.4",
-  "versionCode": 5,
+  "version": "1.0.5",
+  "versionCode": 6,
   "minSupportedVersion": "1.0.0",
   "apkUrl": "https://supervisor-conveyance.vercel.app/Supervisor-App.apk",
   "downloadUrl": "https://supervisor-conveyance.vercel.app/download",
-  "changelog": "Removed server settings, added user profile with password update and secure logout, improved telemetry stability.",
+  "changelog": "Fixed startup stability, enhanced ErrorBoundary, user profile with password update and secure logout.",
   "releaseDate": "2026-09-14"
 }

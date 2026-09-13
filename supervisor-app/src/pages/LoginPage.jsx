@@ -214,7 +214,7 @@ export function LoginPage() {
 
         {/* Update Option Box under Login Card */}
         <div className="flex items-center justify-between px-2 text-xs text-[#94a3b8]">
-          <span className="font-mono text-[11px]">App Version: v{CURRENT_APP_VERSION}</span>
+          <span className="font-mono text-[11px]">App Version: v{installedAppInfo.version}</span>
           <button
             type="button"
             onClick={() => checkUpdates(true)}
