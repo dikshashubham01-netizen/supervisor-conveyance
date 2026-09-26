@@ -17,6 +17,30 @@ import {
   ShieldAlert
 } from 'lucide-react';
 
+function SafeImage({ src, alt, className, emptyText = 'No photo' }) {
+  const [hasError, setHasError] = useState(false);
+  if (!src) {
+    return <div className="w-full h-full flex items-center justify-center text-xs text-slate-600">{emptyText}</div>;
+  }
+  if (hasError) {
+    return (
+      <div className="w-full h-full flex flex-col items-center justify-center p-3 text-center bg-slate-900/90 text-slate-400 text-xs">
+        <span className="text-xl mb-1">🖼️</span>
+        <span className="font-semibold text-slate-300">Photo Unavailable</span>
+        <span className="text-[10px] text-slate-500 mt-0.5">Stored on old Render disk before AWS migration</span>
+      </div>
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt={alt}
+      className={className}
+      onError={() => setHasError(true)}
+    />
+  );
+}
+
 function SessionVerificationModalInner({ isOpen, onClose, sessionId, onActionComplete }) {
   const [details, setDetails] = useState(null);
   const [routePoints, setRoutePoints] = useState([]);
@@ -228,15 +252,12 @@ function SessionVerificationModalInner({ isOpen, onClose, sessionId, onActionCom
                   <span className="text-emerald-400 font-mono">{formatTime(session.start_time)}</span>
                 </div>
                 <div className="aspect-[4/3] bg-black rounded-lg overflow-hidden border border-slate-800">
-                  {session.start_selfie ? (
-                    <img
-                      src={getUploadUrl(session.start_selfie)}
-                      alt="Start Selfie"
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-xs text-slate-600">No photo</div>
-                  )}
+                  <SafeImage
+                    src={session.start_selfie ? getUploadUrl(session.start_selfie) : null}
+                    alt="Start Selfie"
+                    className="w-full h-full object-cover"
+                    emptyText="No photo"
+                  />
                 </div>
                 {session.start_latitude != null && session.start_longitude != null && (
                   <div className="text-[11px] text-slate-400 font-mono">
@@ -252,17 +273,12 @@ function SessionVerificationModalInner({ isOpen, onClose, sessionId, onActionCom
                   <span className="text-amber-400 font-mono">{session.end_time ? formatTime(session.end_time) : 'Pending'}</span>
                 </div>
                 <div className="aspect-[4/3] bg-black rounded-lg overflow-hidden border border-slate-800">
-                  {session.end_selfie ? (
-                    <img
-                      src={getUploadUrl(session.end_selfie)}
-                      alt="End Selfie"
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-xs text-slate-600">
-                      {session.status === 'ON_DUTY' ? 'Duty still in progress' : 'No photo'}
-                    </div>
-                  )}
+                  <SafeImage
+                    src={session.end_selfie ? getUploadUrl(session.end_selfie) : null}
+                    alt="End Selfie"
+                    className="w-full h-full object-cover"
+                    emptyText={session.status === 'ON_DUTY' ? 'Duty still in progress' : 'No photo'}
+                  />
                 </div>
                 {session.end_latitude != null && session.end_longitude != null && (
                   <div className="text-[11px] text-slate-400 font-mono">
@@ -289,15 +305,12 @@ function SessionVerificationModalInner({ isOpen, onClose, sessionId, onActionCom
                   </span>
                 </div>
                 <div className="aspect-[16/9] bg-black rounded-lg overflow-hidden border border-slate-800">
-                  {session.start_odometer_image ? (
-                    <img
-                      src={getUploadUrl(session.start_odometer_image)}
-                      alt="Start Odometer"
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-xs text-slate-600">No image</div>
-                  )}
+                  <SafeImage
+                    src={session.start_odometer_image ? getUploadUrl(session.start_odometer_image) : null}
+                    alt="Start Odometer"
+                    className="w-full h-full object-cover"
+                    emptyText="No image"
+                  />
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-xs text-slate-400 pt-1">
                   <div>OCR Detected: <strong className="text-slate-200 font-mono">{session.start_odometer_ocr ?? 'N/A'}</strong></div>
@@ -314,17 +327,12 @@ function SessionVerificationModalInner({ isOpen, onClose, sessionId, onActionCom
                   </span>
                 </div>
                 <div className="aspect-[16/9] bg-black rounded-lg overflow-hidden border border-slate-800">
-                  {session.end_odometer_image ? (
-                    <img
-                      src={getUploadUrl(session.end_odometer_image)}
-                      alt="End Odometer"
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-xs text-slate-600">
-                      {session.status === 'ON_DUTY' ? 'Duty still in progress' : 'No image'}
-                    </div>
-                  )}
+                  <SafeImage
+                    src={session.end_odometer_image ? getUploadUrl(session.end_odometer_image) : null}
+                    alt="End Odometer"
+                    className="w-full h-full object-cover"
+                    emptyText={session.status === 'ON_DUTY' ? 'Duty still in progress' : 'No image'}
+                  />
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-xs text-slate-400 pt-1">
                   <div>OCR Detected: <strong className="text-slate-200 font-mono">{session.end_odometer_ocr ?? 'N/A'}</strong></div>

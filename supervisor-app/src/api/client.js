@@ -38,6 +38,9 @@ async function request(endpoint, options = {}) {
   const headers = options.headers || {};
   const token = getToken();
 
+  headers['X-App-Version'] = '1.0.6';
+  headers['X-App-Version-Code'] = '7';
+
   if (token && !headers['Authorization']) {
     headers['Authorization'] = `Bearer ${token}`;
   }

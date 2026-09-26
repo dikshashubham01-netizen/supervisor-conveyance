@@ -25,8 +25,8 @@ export function LoginPage() {
   const [hasUpdate, setHasUpdate] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
 
-  // Auto-check for updates on component mount
-  const checkUpdates = async (openModalOnFinish = false) => {
+  // Auto-check for updates on component mount — automatically open modal if outdated
+  const checkUpdates = async (openModalOnFinish = true) => {
     setCheckingUpdate(true);
     try {
       const installed = await getInstalledAppInfo();
@@ -42,7 +42,7 @@ export function LoginPage() {
           installed.versionCode
         );
         setHasUpdate(isNew);
-        if (openModalOnFinish) {
+        if (isNew && openModalOnFinish) {
           setIsUpdateModalOpen(true);
         }
       }
@@ -54,15 +54,40 @@ export function LoginPage() {
   };
 
   useEffect(() => {
-    checkUpdates(false);
+    // Check and auto-prompt modal on load if outdated
+    checkUpdates(true);
   }, []);
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setError(null);
+
+    // BLOCK LOGIN IF UPDATE IS AVAILABLE
+    if (hasUpdate) {
+      setIsUpdateModalOpen(true);
+      setError(`App update required! You must install v${remoteVersionInfo?.version || 'latest'} to log in.`);
+      return;
+    }
+
     setLoading(true);
 
     try {
+      // Re-verify version before authenticating
+      try {
+        const info = await api.version.check();
+        const installed = await getInstalledAppInfo();
+        if (info && isNewerVersion(info.version, installed.version, info.versionCode, installed.versionCode)) {
+          setHasUpdate(true);
+          setRemoteVersionInfo(info);
+          setIsUpdateModalOpen(true);
+          setError(`Update required! Please update to version v${info.version} to continue.`);
+          setLoading(false);
+          return;
+        }
+      } catch (vErr) {
+        console.warn('Pre-login version check error:', vErr);
+      }
+
       await login(employeeId.trim(), password);
     } catch (err) {
       setError(err.message || 'Login failed. Please verify credentials.');
@@ -239,6 +264,7 @@ export function LoginPage() {
         currentVersion={installedAppInfo.version}
         currentVersionCode={installedAppInfo.versionCode}
         remoteInfo={remoteVersionInfo}
+        isMandatory={hasUpdate}
       />
     </div>
   );

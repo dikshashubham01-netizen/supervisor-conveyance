@@ -26,6 +26,26 @@ router.post('/login', async (req, res) => {
     const validPassword = await bcrypt.compare(password, user.password_hash);
     if (!validPassword) return res.status(401).json({ error: 'Invalid Employee ID or password' });
 
+    // Enforce Minimum App Version for supervisors
+    if (user.role === 'supervisor') {
+      const clientVersion = req.body.app_version || req.headers['x-app-version'];
+      const clientVersionCode = req.body.version_code || req.headers['x-app-version-code'];
+      const verRow = await db.queryOne("SELECT * FROM app_version WHERE id = 'latest'");
+
+      if (verRow && verRow.version_code) {
+        if (!clientVersionCode || Number(clientVersionCode) < Number(verRow.version_code)) {
+          return res.status(426).json({
+            error: `App update required! You are using an outdated version. Please update to version v${verRow.version} to log in.`,
+            updateRequired: true,
+            latestVersion: verRow.version,
+            latestVersionCode: Number(verRow.version_code),
+            downloadUrl: verRow.download_page_url,
+            apkUrl: verRow.apk_url
+          });
+        }
+      }
+    }
+
     const token = jwt.sign(
       { id: user.id, employee_id: user.employee_id, role: user.role },
       config.jwtSecret,

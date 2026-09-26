@@ -8,8 +8,8 @@ const DEFAULT_VERSION = {
   id: 'latest',
   version: '1.0.6',
   version_code: 7,
-  min_supported_version: '1.0.0',
-  apk_url: 'https://supervisor-conveyance.vercel.app/Supervisor-App.apk',
+  min_supported_version: '1.0.6',
+  apk_url: 'https://supervisor-conveyance.vercel.app/app-release.apk',
   download_page_url: 'https://supervisor-conveyance.vercel.app/download',
   changelog: 'Added monthly Attendance & day-wise bike run KM calendar with conveyance calculation for supervisors.',
   release_date: new Date().toISOString()

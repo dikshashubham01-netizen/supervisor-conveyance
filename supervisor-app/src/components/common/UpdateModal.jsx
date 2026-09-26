@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Download, Sparkles, CheckCircle2, AlertCircle, ExternalLink, X, Smartphone, ArrowDownCircle } from 'lucide-react';
 import { isNewerVersion } from '../../utils/versionCheck';
 
-export function UpdateModal({ isOpen, onClose, currentVersion, currentVersionCode, remoteInfo }) {
+export function UpdateModal({ isOpen, onClose, currentVersion, currentVersionCode, remoteInfo, isMandatory = false }) {
   const [downloading, setDownloading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [downloadedMb, setDownloadedMb] = useState(0);
@@ -15,8 +15,9 @@ export function UpdateModal({ isOpen, onClose, currentVersion, currentVersionCod
   const latestVersion = remoteInfo?.version || currentVersion || '1.0.6';
   const latestVersionCode = remoteInfo?.versionCode;
   const hasUpdate = isNewerVersion(latestVersion, currentVersion, latestVersionCode, currentVersionCode);
+  const enforcedMandatory = isMandatory || (hasUpdate && remoteInfo?.minSupportedVersion && isNewerVersion(remoteInfo.minSupportedVersion, currentVersion));
   const downloadPageUrl = remoteInfo?.downloadUrl || 'https://supervisor-conveyance.vercel.app/download';
-  const apkUrl = remoteInfo?.apkUrl || 'https://supervisor-conveyance.vercel.app/Supervisor-App.apk';
+  const apkUrl = remoteInfo?.apkUrl || 'https://supervisor-conveyance.vercel.app/app-release.apk';
   const changelog = remoteInfo?.changelog || 'Latest performance enhancements, live GPS tracking sync, and auto-update support.';
 
   const startInAppDownload = async () => {
@@ -83,12 +84,14 @@ export function UpdateModal({ isOpen, onClose, currentVersion, currentVersionCod
         {/* Header */}
         <div className="flex items-center justify-between pb-2" style={{ borderBottom: '1px solid #334155' }}>
           <div className="flex items-center gap-2 text-white font-bold text-sm">
-            <Smartphone className="w-4 h-4 text-emerald-400" />
-            <span>App Version & Updates</span>
+            <Smartphone className={`w-4 h-4 ${enforcedMandatory ? 'text-rose-400' : 'text-emerald-400'}`} />
+            <span>{enforcedMandatory ? 'Update Required to Continue' : 'App Version & Updates'}</span>
           </div>
-          <button onClick={onClose} className="text-[#94a3b8] p-1">
-            <X className="w-5 h-5" />
-          </button>
+          {!enforcedMandatory && (
+            <button onClick={onClose} className="text-[#94a3b8] p-1 hover:text-white transition">
+              <X className="w-5 h-5" />
+            </button>
+          )}
         </div>
 
         {/* Version Status Box */}
@@ -104,7 +107,12 @@ export function UpdateModal({ isOpen, onClose, currentVersion, currentVersionCod
             </div>
           </div>
 
-          {hasUpdate ? (
+          {enforcedMandatory ? (
+            <div className="p-3 rounded-xl flex items-start gap-2 text-xs" style={{ backgroundColor: '#450a0a', border: '1px solid #ef4444', color: '#fca5a5' }}>
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+              <span><strong>Login Blocked:</strong> An update is mandatory. You cannot log in or record duty until you install version <strong>v{latestVersion}</strong>.</span>
+            </div>
+          ) : hasUpdate ? (
             <div className="p-2.5 rounded-xl flex items-center gap-2 text-xs" style={{ backgroundColor: '#052e16', border: '1px solid #166534', color: '#86efac' }}>
               <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
               <span><strong>New update available!</strong> Tap below to download the latest version.</span>
