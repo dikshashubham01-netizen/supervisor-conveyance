@@ -2,11 +2,20 @@
 const DEFAULT_SERVER_URL = 'https://3-7-65-135.sslip.io';
 
 export function getServerUrl() {
-  return localStorage.getItem('geoconvey_server_url') || DEFAULT_SERVER_URL;
+  const stored = localStorage.getItem('geoconvey_server_url');
+  if (stored && (stored.includes('onrender.com') || stored.includes('localhost'))) {
+    localStorage.removeItem('geoconvey_server_url');
+    return DEFAULT_SERVER_URL;
+  }
+  return stored || DEFAULT_SERVER_URL;
 }
 
 export function setServerUrl(url) {
   const clean = (url || '').trim().replace(/\/+$/, '');
+  if (clean.includes('onrender.com')) {
+    localStorage.removeItem('geoconvey_server_url');
+    return;
+  }
   localStorage.setItem('geoconvey_server_url', clean);
 }
 
@@ -144,24 +153,33 @@ export const api = {
   version: {
     check: async () => {
       const server = getServerUrl();
+      // Try primary server
       try {
         const res = await fetch(`${server}/api/app/version?t=${Date.now()}`, {
           cache: 'no-store',
           headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache' },
           signal: AbortSignal.timeout(5000)
         });
-        if (res.ok) return await res.json();
-      } catch (e) {
-        try {
-          const res = await fetch(`https://supervisor-conveyance.vercel.app/version.json?t=${Date.now()}`, {
-            cache: 'no-store',
-            headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache' },
-            signal: AbortSignal.timeout(5000)
-          });
-          if (res.ok) return await res.json();
-        } catch (fallbackErr) {
-          console.warn('Version check error:', fallbackErr);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.version) return data;
         }
+      } catch (e) {
+        // Continue to fallback
+      }
+
+      // Always fallback to Vercel static version.json if primary server is unreachable or returned error
+      try {
+        const fallbackRes = await fetch(`https://supervisor-conveyance.vercel.app/version.json?t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache' },
+          signal: AbortSignal.timeout(5000)
+        });
+        if (fallbackRes.ok) {
+          return await fallbackRes.json();
+        }
+      } catch (fallbackErr) {
+        console.warn('Version check fallback error:', fallbackErr);
       }
       return null;
     }

@@ -63,6 +63,14 @@ export function LoginPage() {
   };
 
   useEffect(() => {
+    // Purge obsolete onrender.com URLs from phone localStorage
+    try {
+      const saved = localStorage.getItem('geoconvey_server_url');
+      if (saved && (saved.includes('onrender.com') || saved.includes('localhost'))) {
+        localStorage.removeItem('geoconvey_server_url');
+      }
+    } catch (e) {}
+
     // Check on initial load — only open modal automatically if update is actually required
     async function initCheck() {
       try {
