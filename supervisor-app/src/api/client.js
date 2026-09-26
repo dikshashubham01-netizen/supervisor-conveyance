@@ -1,5 +1,5 @@
-// Live production backend — uses Vercel HTTPS proxy / AWS EC2
-const DEFAULT_SERVER_URL = 'https://supervisor-conveyance.vercel.app';
+// Live production backend — AWS EC2 Mumbai (24/7 with HTTPS)
+const DEFAULT_SERVER_URL = 'https://3-7-65-135.sslip.io';
 
 export function getServerUrl() {
   return localStorage.getItem('geoconvey_server_url') || DEFAULT_SERVER_URL;

@@ -1,11 +1,11 @@
-const RAW_BACKEND = import.meta.env.VITE_API_URL || (typeof window !== 'undefined' && window.location.protocol === 'https:' ? '' : 'http://3.7.65.135');
+const RAW_BACKEND = import.meta.env.VITE_API_URL || 'https://3-7-65-135.sslip.io';
 export const BACKEND_URL = RAW_BACKEND.replace(/\/+$/, '');
-export const API_BASE = BACKEND_URL ? `${BACKEND_URL}/api` : '/api';
+export const API_BASE = `${BACKEND_URL}/api`;
 
 export function getUploadUrl(filename) {
   if (!filename) return '';
   if (filename.startsWith('http://') || filename.startsWith('https://')) return filename;
-  return BACKEND_URL ? `${BACKEND_URL}/uploads/${filename}` : `/uploads/${filename}`;
+  return `${BACKEND_URL}/uploads/${filename}`;
 }
 
 export function getToken() {

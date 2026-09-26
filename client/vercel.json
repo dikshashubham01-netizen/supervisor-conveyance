@@ -2,11 +2,11 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "http://3.7.65.135/api/$1"
+      "destination": "https://3-7-65-135.sslip.io/api/$1"
     },
     {
       "source": "/uploads/(.*)",
-      "destination": "http://3.7.65.135/uploads/$1"
+      "destination": "https://3-7-65-135.sslip.io/uploads/$1"
     },
     {
       "source": "/(.*)",
