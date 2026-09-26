@@ -1,5 +1,5 @@
-// Live production backend — always use Render unless admin manually overrides via Settings
-const DEFAULT_SERVER_URL = 'https://supervisor-api-vvba.onrender.com';
+// Live production backend — uses Vercel HTTPS proxy / AWS EC2
+const DEFAULT_SERVER_URL = 'https://supervisor-conveyance.vercel.app';
 
 export function getServerUrl() {
   return localStorage.getItem('geoconvey_server_url') || DEFAULT_SERVER_URL;

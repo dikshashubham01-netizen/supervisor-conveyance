@@ -2,11 +2,11 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://supervisor-api-vvba.onrender.com/api/$1"
+      "destination": "http://3.7.65.135/api/$1"
     },
     {
       "source": "/uploads/(.*)",
-      "destination": "https://supervisor-api-vvba.onrender.com/uploads/$1"
+      "destination": "http://3.7.65.135/uploads/$1"
     },
     {
       "source": "/(.*)",

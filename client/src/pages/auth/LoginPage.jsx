@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { Navigation, Lock, User, AlertCircle, ArrowRight, Eye, EyeOff, RefreshCw, Server } from 'lucide-react';
 
-const SERVER_URL = 'https://supervisor-api-vvba.onrender.com';
+const SERVER_URL = typeof window !== 'undefined' && window.location.protocol === 'https:' ? '' : 'http://3.7.65.135';
 
 async function pingServer() {
   try {
