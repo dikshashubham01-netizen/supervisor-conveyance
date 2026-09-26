@@ -45,7 +45,7 @@ public class LocationTrackingService extends Service implements LocationListener
     private String dutySessionId = "";
     private String supervisorId = "";
     private String authToken = "";
-    private String serverUrl = "https://supervisor-api-vvba.onrender.com";
+    private String serverUrl = "https://3-7-65-135.sslip.io";
 
     private Location lastRecordedLocation = null;
     private long lastRecordedTime = 0;
