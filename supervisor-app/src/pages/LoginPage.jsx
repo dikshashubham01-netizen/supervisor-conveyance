@@ -15,6 +15,7 @@ export function LoginPage() {
 
   // Modals
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
+  const [autoDownload, setAutoDownload] = useState(false);
 
   // Version & Updates
   const [installedAppInfo, setInstalledAppInfo] = useState({
@@ -25,8 +26,8 @@ export function LoginPage() {
   const [hasUpdate, setHasUpdate] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
 
-  // Auto-check for updates on component mount — automatically open modal if outdated
-  const checkUpdates = async (openModalOnFinish = true) => {
+  // Check for updates: if autoDownloadIfAvailable is true, starts downloading immediately when an update exists
+  const checkUpdates = async (openModalOnFinish = true, autoDownloadIfAvailable = false) => {
     setCheckingUpdate(true);
     try {
       const installed = await getInstalledAppInfo();
@@ -42,20 +43,46 @@ export function LoginPage() {
           installed.versionCode
         );
         setHasUpdate(isNew);
-        if (isNew && openModalOnFinish) {
+        if (openModalOnFinish) {
+          setAutoDownload(autoDownloadIfAvailable && isNew);
           setIsUpdateModalOpen(true);
         }
+      } else if (openModalOnFinish) {
+        setAutoDownload(false);
+        setIsUpdateModalOpen(true);
       }
     } catch (err) {
       console.warn('Update check warning:', err);
+      if (openModalOnFinish) {
+        setAutoDownload(false);
+        setIsUpdateModalOpen(true);
+      }
     } finally {
       setCheckingUpdate(false);
     }
   };
 
   useEffect(() => {
-    // Check and auto-prompt modal on load if outdated
-    checkUpdates(true);
+    // Check on initial load — only open modal automatically if update is actually required
+    async function initCheck() {
+      try {
+        const installed = await getInstalledAppInfo();
+        setInstalledAppInfo(installed);
+        const info = await api.version.check();
+        if (info) {
+          setRemoteVersionInfo(info);
+          const isNew = isNewerVersion(info.version, installed.version, info.versionCode, installed.versionCode);
+          setHasUpdate(isNew);
+          if (isNew) {
+            setAutoDownload(true);
+            setIsUpdateModalOpen(true);
+          }
+        }
+      } catch (e) {
+        console.warn('Init version check warning:', e);
+      }
+    }
+    initCheck();
   }, []);
 
   const handleLogin = async (e) => {
@@ -111,7 +138,10 @@ export function LoginPage() {
           {/* Version / Update Pill Button */}
           <button
             type="button"
-            onClick={() => setIsUpdateModalOpen(true)}
+            onClick={() => {
+              setAutoDownload(hasUpdate);
+              setIsUpdateModalOpen(true);
+            }}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-mono transition active:scale-95 shadow-sm"
             style={{
               backgroundColor: hasUpdate ? '#064e3b' : '#1e293b',
@@ -137,7 +167,10 @@ export function LoginPage() {
         {hasUpdate && (
           <button
             type="button"
-            onClick={() => setIsUpdateModalOpen(true)}
+            onClick={() => {
+              setAutoDownload(true);
+              setIsUpdateModalOpen(true);
+            }}
             className="p-3 rounded-2xl flex items-center justify-between text-xs transition active:scale-95 shadow-lg"
             style={{
               background: 'linear-gradient(to right, #047857, #065f46)',
@@ -242,7 +275,7 @@ export function LoginPage() {
           <span className="font-mono text-[11px]">App Version: v{installedAppInfo.version}</span>
           <button
             type="button"
-            onClick={() => checkUpdates(true)}
+            onClick={() => checkUpdates(true, true)}
             disabled={checkingUpdate}
             className="flex items-center gap-1 text-[11px] text-emerald-400 hover:text-emerald-300 transition underline underline-offset-2"
           >
@@ -265,6 +298,7 @@ export function LoginPage() {
         currentVersionCode={installedAppInfo.versionCode}
         remoteInfo={remoteVersionInfo}
         isMandatory={hasUpdate}
+        autoStartDownload={autoDownload}
       />
     </div>
   );

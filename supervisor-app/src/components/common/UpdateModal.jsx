@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Download, Sparkles, CheckCircle2, AlertCircle, ExternalLink, X, Smartphone, ArrowDownCircle } from 'lucide-react';
 import { isNewerVersion } from '../../utils/versionCheck';
 
-export function UpdateModal({ isOpen, onClose, currentVersion, currentVersionCode, remoteInfo, isMandatory = false }) {
+export function UpdateModal({ isOpen, onClose, currentVersion, currentVersionCode, remoteInfo, isMandatory = false, autoStartDownload = false }) {
   const [downloading, setDownloading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [downloadedMb, setDownloadedMb] = useState(0);
@@ -12,13 +12,20 @@ export function UpdateModal({ isOpen, onClose, currentVersion, currentVersionCod
 
   if (!isOpen) return null;
 
-  const latestVersion = remoteInfo?.version || currentVersion || '1.0.6';
+  const latestVersion = remoteInfo?.version || currentVersion || '1.0.7';
   const latestVersionCode = remoteInfo?.versionCode;
   const hasUpdate = isNewerVersion(latestVersion, currentVersion, latestVersionCode, currentVersionCode);
   const enforcedMandatory = isMandatory || (hasUpdate && remoteInfo?.minSupportedVersion && isNewerVersion(remoteInfo.minSupportedVersion, currentVersion));
   const downloadPageUrl = remoteInfo?.downloadUrl || 'https://supervisor-conveyance.vercel.app/download';
   const apkUrl = remoteInfo?.apkUrl || 'https://supervisor-conveyance.vercel.app/app-release.apk';
-  const changelog = remoteInfo?.changelog || 'Latest performance enhancements, live GPS tracking sync, and auto-update support.';
+  const changelog = remoteInfo?.changelog || 'Mandatory auto-update enforcement, one-tap instant download on update check, and AWS 24/7 cloud sync.';
+
+  // If autoStartDownload is true and an update is available, download immediately
+  React.useEffect(() => {
+    if (isOpen && autoStartDownload && hasUpdate && !downloading && !completed) {
+      startInAppDownload();
+    }
+  }, [isOpen, autoStartDownload, hasUpdate]);
 
   const startInAppDownload = async () => {
     try {
@@ -118,9 +125,12 @@ export function UpdateModal({ isOpen, onClose, currentVersion, currentVersionCod
               <span><strong>New update available!</strong> Tap below to download the latest version.</span>
             </div>
           ) : (
-            <div className="p-2.5 rounded-xl flex items-center gap-2 text-xs" style={{ backgroundColor: '#0f291e', border: '1px solid #14532d', color: '#86efac' }}>
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span>You are using the latest version of GeoConvey!</span>
+            <div className="p-3 rounded-xl flex items-center gap-2.5 text-xs" style={{ backgroundColor: '#052e16', border: '1.5px solid #16a34a', color: '#86efac' }}>
+              <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+              <div>
+                <strong className="block text-emerald-300 font-bold text-xs">No update found</strong>
+                <span className="text-emerald-400/90 text-[11px]">You are already on the latest version of GeoConvey (v{currentVersion}).</span>
+              </div>
             </div>
           )}
         </div>
@@ -146,7 +156,7 @@ export function UpdateModal({ isOpen, onClose, currentVersion, currentVersionCod
             <div className="flex items-center justify-between text-xs text-white">
               <span className="flex items-center gap-1.5 font-bold">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                Downloading APK...
+                Downloading Updated APK...
               </span>
               <span className="font-mono text-emerald-400 font-bold">{progress}%</span>
             </div>
@@ -173,7 +183,7 @@ export function UpdateModal({ isOpen, onClose, currentVersion, currentVersionCod
               <span>Download Complete (100%)!</span>
             </div>
             <span className="text-[11px] text-[#86efac]">
-              Tap on the downloaded <strong>Supervisor-App.apk</strong> in your phone notifications or Downloads folder to install.
+              Tap on the downloaded <strong>app-release.apk</strong> in your phone notifications or Downloads folder to install.
             </span>
           </div>
         )}
@@ -188,7 +198,18 @@ export function UpdateModal({ isOpen, onClose, currentVersion, currentVersionCod
               style={{ background: 'linear-gradient(to right, #16a34a, #15803d)' }}
             >
               <Download className="w-4 h-4" />
-              <span>{completed ? 'Download APK Again' : hasUpdate ? `Download Update (v${latestVersion})` : 'Re-download Current APK'}</span>
+              <span>{completed ? 'Download APK Again' : hasUpdate ? `Download Update (v${latestVersion})` : 'Re-download Current APK (v' + currentVersion + ')'}</span>
+            </button>
+          )}
+
+          {!hasUpdate && !enforcedMandatory && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-full py-2.5 px-3 rounded-xl font-bold text-xs text-white transition active:scale-95"
+              style={{ backgroundColor: '#334155' }}
+            >
+              OK, Got It
             </button>
           )}
 

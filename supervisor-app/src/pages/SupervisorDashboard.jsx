@@ -49,6 +49,7 @@ export function SupervisorDashboard() {
   const [remoteVersionInfo, setRemoteVersionInfo] = useState(null);
   const [hasUpdate, setHasUpdate] = useState(false);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
+  const [autoDownload, setAutoDownload] = useState(false);
   const [isDevBlocked, setIsDevBlocked] = useState(false);
 
   // Check Developer Options on mount and periodically
@@ -112,6 +113,32 @@ export function SupervisorDashboard() {
     }
     checkForUpdates();
   }, []);
+
+  const handleUpdateClick = async () => {
+    try {
+      const installed = await getInstalledAppInfo();
+      setInstalledAppInfo(installed);
+      const remote = await api.version.check();
+      if (remote) {
+        setRemoteVersionInfo(remote);
+        const needsUpdate = isNewerVersion(
+          remote.version,
+          installed.version,
+          remote.versionCode,
+          installed.versionCode
+        );
+        setHasUpdate(needsUpdate);
+        setAutoDownload(needsUpdate);
+      } else {
+        setAutoDownload(false);
+      }
+    } catch (e) {
+      console.warn('Manual update check failed:', e);
+      setAutoDownload(false);
+    } finally {
+      setIsUpdateModalOpen(true);
+    }
+  };
 
   // High-accuracy background GPS tracking
   const { currentPosition, accuracyRating, error: gpsError } = useGeolocation(isOnDuty, activeDuty?.id);
@@ -416,7 +443,7 @@ export function SupervisorDashboard() {
 
         <button
           type="button"
-          onClick={() => setIsUpdateModalOpen(true)}
+          onClick={handleUpdateClick}
           className={`py-3 px-1.5 rounded-2xl border text-[11px] font-bold flex flex-col items-center justify-center gap-1 shadow transition active:scale-95 ${
             hasUpdate
               ? 'bg-emerald-950 border-emerald-500 text-emerald-300 animate-pulse'
@@ -448,6 +475,7 @@ export function SupervisorDashboard() {
         currentVersion={installedAppInfo.version}
         currentVersionCode={installedAppInfo.versionCode}
         remoteInfo={remoteVersionInfo}
+        autoStartDownload={autoDownload}
       />
     </div>
   );
