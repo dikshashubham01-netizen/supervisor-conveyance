@@ -53,6 +53,7 @@ function SessionVerificationModalInner({ isOpen, onClose, sessionId, onActionCom
   const [overrideKm, setOverrideKm] = useState('');
   const [overrideReason, setOverrideReason] = useState('');
   const [reviewNotes, setReviewNotes] = useState('');
+  const [showAllGpsJumps, setShowAllGpsJumps] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const loadData = async () => {
@@ -408,35 +409,96 @@ function SessionVerificationModalInner({ isOpen, onClose, sessionId, onActionCom
           </div>
 
           {/* SECTION 5: Audit Log Trail */}
-          {auditLogs.length > 0 && (
-            <div className="flex flex-col gap-2">
-              <h5 className="text-sm font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                <History className="w-4 h-4 text-purple-400" />
-                5. Audit Trail
-              </h5>
-              <div className="space-y-2">
-                {auditLogs.map((log) => (
-                  <div key={log.id} className="p-3 bg-slate-850 rounded-xl border border-slate-800 text-xs">
-                    <div className="flex items-center justify-between text-slate-400 mb-1">
-                      <span className="font-bold text-slate-200">{log.action}</span>
-                      <span>{formatDateTime(log.created_at)}</span>
-                    </div>
-                    <div className="text-slate-300">
-                      by <strong className="text-white">{log.user_name}</strong> ({log.user_role}): {log.reason}
-                    </div>
-                    {log.new_value && (
-                      <div className="text-[11px] text-slate-400 mt-1 font-mono">
-                        {log.old_value && <span>{typeof log.old_value === 'object' ? JSON.stringify(log.old_value) : String(log.old_value)} &rarr; </span>}
-                        <span className="text-emerald-400">
-                          {typeof log.new_value === 'object' ? JSON.stringify(log.new_value) : String(log.new_value)}
-                        </span>
-                      </div>
-                    )}
+          {auditLogs.length > 0 && (() => {
+            const GPS_JUMP = 'GPS_JUMP_REJECTED';
+            const gpsJumps = auditLogs.filter(l => l.action === GPS_JUMP);
+            const otherLogs = auditLogs.filter(l => l.action !== GPS_JUMP);
+
+            const VISIBLE_GPS = 5;
+            const visibleGps = gpsJumps.slice(0, VISIBLE_GPS);
+            const hiddenGps = gpsJumps.slice(VISIBLE_GPS);
+
+            const renderLog = (log) => (
+              <div key={log.id} className="p-3 bg-slate-850 rounded-xl border border-slate-800 text-xs">
+                <div className="flex items-center justify-between text-slate-400 mb-1">
+                  <span className="font-bold text-slate-200">{log.action}</span>
+                  <span>{formatDateTime(log.created_at)}</span>
+                </div>
+                <div className="text-slate-300">
+                  by <strong className="text-white">{log.user_name}</strong> ({log.user_role}): {log.reason}
+                </div>
+                {log.new_value && (
+                  <div className="text-[11px] text-slate-400 mt-1 font-mono">
+                    {log.old_value && <span>{typeof log.old_value === 'object' ? JSON.stringify(log.old_value) : String(log.old_value)} &rarr; </span>}
+                    <span className="text-emerald-400">
+                      {typeof log.new_value === 'object' ? JSON.stringify(log.new_value) : String(log.new_value)}
+                    </span>
                   </div>
-                ))}
+                )}
               </div>
-            </div>
-          )}
+            );
+
+            return (
+              <div className="flex flex-col gap-2">
+                <h5 className="text-sm font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <History className="w-4 h-4 text-purple-400" />
+                  5. Audit Trail
+                </h5>
+                <div className="space-y-2">
+                  {/* Non-GPS logs first */}
+                  {otherLogs.map(renderLog)}
+
+                  {/* GPS_JUMP_REJECTED group */}
+                  {gpsJumps.length > 0 && (
+                    <div className="rounded-xl border border-slate-700 overflow-hidden">
+                      {/* Header row showing count */}
+                      <div className="px-3 py-2 bg-slate-800 flex items-center justify-between">
+                        <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                          <ShieldAlert className="w-3.5 h-3.5" />
+                          GPS_JUMP_REJECTED
+                          <span className="ml-1 px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-mono">
+                            ×{gpsJumps.length}
+                          </span>
+                        </span>
+                        {hiddenGps.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setShowAllGpsJumps(v => !v)}
+                            className="text-[11px] text-brand-400 hover:text-brand-300 font-semibold transition underline underline-offset-2"
+                          >
+                            {showAllGpsJumps ? `▲ Show less` : `▼ Show all ${gpsJumps.length}`}
+                          </button>
+                        )}
+                      </div>
+
+                      {/* First 5 always visible */}
+                      <div className="divide-y divide-slate-800">
+                        {visibleGps.map(renderLog)}
+                      </div>
+
+                      {/* Hidden ones in slide-down */}
+                      {hiddenGps.length > 0 && showAllGpsJumps && (
+                        <div className="divide-y divide-slate-800 border-t border-slate-700">
+                          {hiddenGps.map(renderLog)}
+                        </div>
+                      )}
+
+                      {/* Collapsed summary strip */}
+                      {hiddenGps.length > 0 && !showAllGpsJumps && (
+                        <button
+                          type="button"
+                          onClick={() => setShowAllGpsJumps(true)}
+                          className="w-full px-3 py-2 bg-slate-900/60 hover:bg-slate-800 text-[11px] text-slate-400 hover:text-white transition text-center border-t border-slate-800"
+                        >
+                          + {hiddenGps.length} more GPS_JUMP_REJECTED events — click to expand
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* SECTION 6: Admin Actions */}
           <div className="pt-4 border-t border-slate-800 flex flex-col gap-4">
