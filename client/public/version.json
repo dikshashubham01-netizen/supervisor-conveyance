@@ -1,9 +1,9 @@
 {
-  "version": "1.0.7",
-  "versionCode": 8,
+  "version": "1.0.8",
+  "versionCode": 9,
   "minSupportedVersion": "1.0.7",
   "apkUrl": "https://supervisor-conveyance.vercel.app/app-release.apk",
   "downloadUrl": "https://supervisor-conveyance.vercel.app/download",
-  "changelog": "Mandatory auto-update enforcement, one-tap instant download on update check, and AWS 24/7 cloud sync.",
-  "releaseDate": "2026-09-26"
+  "changelog": "Fixed Update screen crash, added offline GPS location capture without internet with auto-sync when online, and supervisor sub-division support.",
+  "releaseDate": "2026-10-07"
 }

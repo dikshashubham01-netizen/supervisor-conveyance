@@ -17,10 +17,17 @@ import android.os.IBinder;
 import android.os.PowerManager;
 import android.provider.Settings;
 import android.util.Log;
+import android.net.ConnectivityManager;
+import android.net.Network;
 import androidx.core.app.NotificationCompat;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -31,16 +38,23 @@ import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 public class LocationTrackingService extends Service implements LocationListener {
 
     private static final String TAG = "LocationTrackingService";
     private static final String CHANNEL_ID = "geoconvey_duty_tracking";
     private static final int NOTIFICATION_ID = 2026;
+    private static final String OFFLINE_QUEUE_FILE = "geoconvey_offline_gps.json";
 
+    private final Object queueLock = new Object();
     private LocationManager locationManager;
     private PowerManager.WakeLock wakeLock;
     private ExecutorService networkExecutor;
+    private ScheduledExecutorService periodicSyncScheduler;
+    private ConnectivityManager connectivityManager;
+    private ConnectivityManager.NetworkCallback networkCallback;
 
     private String dutySessionId = "";
     private String supervisorId = "";
@@ -81,7 +95,9 @@ public class LocationTrackingService extends Service implements LocationListener
     public void onCreate() {
         super.onCreate();
         networkExecutor = Executors.newSingleThreadExecutor();
+        periodicSyncScheduler = Executors.newSingleThreadScheduledExecutor();
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        connectivityManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
 
         PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
         if (powerManager != null) {
@@ -90,6 +106,8 @@ public class LocationTrackingService extends Service implements LocationListener
         }
 
         createNotificationChannel();
+        registerNetworkCallback();
+        startPeriodicSyncScheduler();
     }
 
     @Override
@@ -223,63 +241,240 @@ public class LocationTrackingService extends Service implements LocationListener
             lastRecordedLocation = location;
             lastRecordedTime = now;
 
-            // Send point to backend
-            sendLocationToBackend(location);
+            // Save point to offline storage & flush to cloud
+            processAndRecordLocation(location);
         }
     }
 
-    private void sendLocationToBackend(Location loc) {
+    private void processAndRecordLocation(Location loc) {
+        if (dutySessionId == null || dutySessionId.isEmpty()) return;
+
+        try {
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
+            sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
+            String timeStr = sdf.format(new Date(loc.getTime()));
+
+            JSONObject pointObj = new JSONObject();
+            pointObj.put("clientUuid", "bg_" + UUID.randomUUID().toString());
+            pointObj.put("dutySessionId", dutySessionId);
+            pointObj.put("latitude", loc.getLatitude());
+            pointObj.put("longitude", loc.getLongitude());
+            pointObj.put("accuracy", loc.hasAccuracy() ? loc.getAccuracy() : 10.0f);
+            pointObj.put("speed", loc.hasSpeed() ? loc.getSpeed() : 0.0f);
+            pointObj.put("heading", loc.hasBearing() ? loc.getBearing() : 0.0f);
+            pointObj.put("altitude", loc.hasAltitude() ? loc.getAltitude() : JSONObject.NULL);
+            pointObj.put("provider", loc.getProvider() != null ? loc.getProvider() : "gps");
+            pointObj.put("is_mock", isMockLocation(loc));
+            pointObj.put("recordedAt", timeStr);
+
+            // 1. Save to persistent offline queue immediately on device
+            enqueueLocationPoint(pointObj);
+
+            // 2. Trigger sync immediately (will succeed if online, or stay safely stored if offline)
+            flushOfflineQueue();
+        } catch (Exception e) {
+            Log.e(TAG, "Error formatting location point: " + e.getMessage());
+        }
+    }
+
+    private File getOfflineFile() {
+        return new File(getFilesDir(), OFFLINE_QUEUE_FILE);
+    }
+
+    private JSONArray readOfflineQueue() {
+        synchronized (queueLock) {
+            File file = getOfflineFile();
+            if (!file.exists()) {
+                return new JSONArray();
+            }
+            try (FileInputStream fis = new FileInputStream(file);
+                 InputStreamReader isr = new InputStreamReader(fis, "UTF-8");
+                 BufferedReader reader = new BufferedReader(isr)) {
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    sb.append(line);
+                }
+                String content = sb.toString().trim();
+                if (content.isEmpty()) return new JSONArray();
+                return new JSONArray(content);
+            } catch (Exception e) {
+                Log.w(TAG, "Error reading offline queue file: " + e.getMessage());
+                return new JSONArray();
+            }
+        }
+    }
+
+    private void writeOfflineQueue(JSONArray array) {
+        synchronized (queueLock) {
+            File file = getOfflineFile();
+            try (FileOutputStream fos = new FileOutputStream(file, false)) {
+                fos.write(array.toString().getBytes("UTF-8"));
+                fos.flush();
+            } catch (Exception e) {
+                Log.e(TAG, "Error writing offline queue file: " + e.getMessage());
+            }
+        }
+    }
+
+    private void enqueueLocationPoint(JSONObject pointObj) {
+        synchronized (queueLock) {
+            try {
+                JSONArray queue = readOfflineQueue();
+                queue.put(pointObj);
+                writeOfflineQueue(queue);
+                int count = queue.length();
+                Log.d(TAG, "Location saved offline on device. Total pending: " + count);
+                if (count > 1) {
+                    updateNotification("Recording route • 🛰️ " + count + " points saved offline (will sync when online)");
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error enqueuing location point: " + e.getMessage());
+            }
+        }
+    }
+
+    private int getOfflineQueueSize() {
+        synchronized (queueLock) {
+            return readOfflineQueue().length();
+        }
+    }
+
+    private void flushOfflineQueue() {
         if (dutySessionId == null || dutySessionId.isEmpty()) return;
 
         networkExecutor.execute(() -> {
             try {
-                SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
-                sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
-                String timeStr = sdf.format(new Date(loc.getTime()));
+                while (true) {
+                    JSONArray currentQueue;
+                    JSONArray batch = new JSONArray();
+                    int batchSize;
 
-                JSONObject pointObj = new JSONObject();
-                pointObj.put("clientUuid", "bg_" + UUID.randomUUID().toString());
-                pointObj.put("dutySessionId", dutySessionId);
-                pointObj.put("latitude", loc.getLatitude());
-                pointObj.put("longitude", loc.getLongitude());
-                pointObj.put("accuracy", loc.hasAccuracy() ? loc.getAccuracy() : 10.0f);
-                pointObj.put("speed", loc.hasSpeed() ? loc.getSpeed() : 0.0f);
-                pointObj.put("heading", loc.hasBearing() ? loc.getBearing() : 0.0f);
-                pointObj.put("altitude", loc.hasAltitude() ? loc.getAltitude() : JSONObject.NULL);
-                pointObj.put("provider", loc.getProvider() != null ? loc.getProvider() : "gps");
-                pointObj.put("is_mock", isMockLocation(loc));
-                pointObj.put("recordedAt", timeStr);
+                    synchronized (queueLock) {
+                        currentQueue = readOfflineQueue();
+                        int total = currentQueue.length();
+                        if (total == 0) {
+                            updateNotification("Recording GPS route & bike conveyance • 📡 Cloud Synced");
+                            break;
+                        }
 
-                JSONArray pointsArray = new JSONArray();
-                pointsArray.put(pointObj);
+                        batchSize = Math.min(total, 50);
+                        for (int i = 0; i < batchSize; i++) {
+                            batch.put(currentQueue.getJSONObject(i));
+                        }
+                    }
 
-                JSONObject payload = new JSONObject();
-                payload.put("points", pointsArray);
+                    Log.d(TAG, "Attempting to sync " + batchSize + " points to cloud...");
 
-                URL url = new URL(serverUrl + "/api/tracking/sync");
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("POST");
-                conn.setRequestProperty("Content-Type", "application/json");
-                if (authToken != null && !authToken.isEmpty()) {
-                    conn.setRequestProperty("Authorization", "Bearer " + authToken);
+                    JSONObject payload = new JSONObject();
+                    payload.put("points", batch);
+
+                    URL url = new URL(serverUrl + "/api/tracking/sync");
+                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                    conn.setRequestMethod("POST");
+                    conn.setRequestProperty("Content-Type", "application/json");
+                    if (authToken != null && !authToken.isEmpty()) {
+                        conn.setRequestProperty("Authorization", "Bearer " + authToken);
+                    }
+                    conn.setConnectTimeout(8000);
+                    conn.setReadTimeout(8000);
+                    conn.setDoOutput(true);
+
+                    byte[] body = payload.toString().getBytes("UTF-8");
+                    try (OutputStream os = conn.getOutputStream()) {
+                        os.write(body);
+                        os.flush();
+                    }
+
+                    int code = conn.getResponseCode();
+                    conn.disconnect();
+
+                    if (code == 200 || code == 201) {
+                        int remaining;
+                        synchronized (queueLock) {
+                            JSONArray freshQueue = readOfflineQueue();
+                            JSONArray updatedQueue = new JSONArray();
+                            for (int i = batchSize; i < freshQueue.length(); i++) {
+                                updatedQueue.put(freshQueue.getJSONObject(i));
+                            }
+                            writeOfflineQueue(updatedQueue);
+                            remaining = updatedQueue.length();
+                        }
+
+                        Log.d(TAG, "✅ Synced batch of " + batchSize + " points! Remaining offline points: " + remaining);
+
+                        if (remaining == 0) {
+                            updateNotification("Recording route • 📡 All locations cloud-synced");
+                            break;
+                        } else {
+                            updateNotification("Syncing... • " + remaining + " offline points remaining");
+                        }
+                    } else {
+                        Log.w(TAG, "Server responded with HTTP " + code + " during sync");
+                        break;
+                    }
                 }
-                conn.setConnectTimeout(8000);
-                conn.setReadTimeout(8000);
-                conn.setDoOutput(true);
-
-                byte[] body = payload.toString().getBytes("UTF-8");
-                try (OutputStream os = conn.getOutputStream()) {
-                    os.write(body);
-                    os.flush();
-                }
-
-                int code = conn.getResponseCode();
-                Log.d(TAG, "Location synced to cloud: (" + loc.getLatitude() + ", " + loc.getLongitude() + ") -> HTTP " + code);
-                conn.disconnect();
             } catch (Exception e) {
-                Log.w(TAG, "Failed to stream GPS point to cloud: " + e.getMessage());
+                int queueSize = getOfflineQueueSize();
+                Log.d(TAG, "No internet or sync failed: " + e.getMessage() + ". " + queueSize + " points kept safely on disk.");
+                if (queueSize > 0) {
+                    updateNotification("Recording route • 🛰️ " + queueSize + " points saved offline (will sync when online)");
+                }
             }
         });
+    }
+
+    private void registerNetworkCallback() {
+        if (connectivityManager == null) return;
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                networkCallback = new ConnectivityManager.NetworkCallback() {
+                    @Override
+                    public void onAvailable(Network network) {
+                        Log.d(TAG, "Internet connection restored! Flushing offline location queue...");
+                        flushOfflineQueue();
+                    }
+                };
+                connectivityManager.registerDefaultNetworkCallback(networkCallback);
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Could not register network callback: " + e.getMessage());
+        }
+    }
+
+    private void unregisterNetworkCallback() {
+        if (connectivityManager != null && networkCallback != null) {
+            try {
+                connectivityManager.unregisterNetworkCallback(networkCallback);
+            } catch (Exception ignored) {}
+            networkCallback = null;
+        }
+    }
+
+    private void startPeriodicSyncScheduler() {
+        if (periodicSyncScheduler != null) {
+            periodicSyncScheduler.scheduleWithFixedDelay(() -> {
+                try {
+                    int count = getOfflineQueueSize();
+                    if (count > 0) {
+                        Log.d(TAG, "Periodic check: " + count + " offline points pending, attempting sync...");
+                        flushOfflineQueue();
+                    }
+                } catch (Exception e) {
+                    Log.w(TAG, "Periodic sync check error: " + e.getMessage());
+                }
+            }, 10, 15, TimeUnit.SECONDS);
+        }
+    }
+
+    private void updateNotification(String text) {
+        try {
+            NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            if (manager != null) {
+                Notification notification = buildNotification("GeoConvey • Duty in Progress", text);
+                manager.notify(NOTIFICATION_ID, notification);
+            }
+        } catch (Exception ignored) {}
     }
 
     private void sendSecurityEvent(String eventType, String reason) {
@@ -321,6 +516,11 @@ public class LocationTrackingService extends Service implements LocationListener
     }
 
     private void stopTracking() {
+        flushOfflineQueue();
+        unregisterNetworkCallback();
+        if (periodicSyncScheduler != null) {
+            periodicSyncScheduler.shutdown();
+        }
         if (locationManager != null) {
             try {
                 locationManager.removeUpdates(this);

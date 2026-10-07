@@ -1,7 +1,7 @@
 import { App } from '@capacitor/app';
 
-export const FALLBACK_APP_VERSION = '1.0.7';
-export const FALLBACK_VERSION_CODE = 8;
+export const FALLBACK_APP_VERSION = '1.0.8';
+export const FALLBACK_VERSION_CODE = 9;
 
 export async function getInstalledAppInfo() {
   try {

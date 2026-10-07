@@ -20,7 +20,7 @@ export function OfflineQueueProvider({ children }) {
   }, []);
 
   const triggerSync = useCallback(async () => {
-    if (!navigator.onLine || isSyncing) return;
+    if (isSyncing) return;
 
     try {
       const pending = await getPendingLocations();
@@ -33,6 +33,9 @@ export function OfflineQueueProvider({ children }) {
       const batch = pending.slice(0, 50);
       await api.tracking.sync(batch);
 
+      // Successfully contacted server -> we are online!
+      setIsOnline(true);
+
       const syncedUuids = batch.map((p) => p.clientUuid);
       await clearSyncedLocations(syncedUuids);
 
@@ -40,10 +43,13 @@ export function OfflineQueueProvider({ children }) {
       setPendingCount(remaining);
 
       if (remaining > 0) {
-        setTimeout(triggerSync, 500);
+        setTimeout(triggerSync, 300);
       }
     } catch (err) {
-      console.warn('Sync attempt failed:', err.message);
+      console.warn('Sync attempt failed (offline or network error):', err.message);
+      if (!navigator.onLine || err.message?.includes('fetch') || err.message?.includes('network')) {
+        setIsOnline(false);
+      }
     } finally {
       setIsSyncing(false);
     }
@@ -53,9 +59,7 @@ export function OfflineQueueProvider({ children }) {
     async (point) => {
       await savePendingLocation(point);
       await refreshPendingCount();
-      if (navigator.onLine) {
-        triggerSync();
-      }
+      triggerSync();
     },
     [refreshPendingCount, triggerSync]
   );
@@ -68,17 +72,28 @@ export function OfflineQueueProvider({ children }) {
       triggerSync();
     };
     const handleOffline = () => setIsOnline(false);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refreshPendingCount();
+        triggerSync();
+      }
+    };
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    window.addEventListener('focus', handleOnline);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
+    // Periodic sync attempt every 10 seconds
     const interval = setInterval(() => {
-      if (navigator.onLine) triggerSync();
-    }, 15000);
+      triggerSync();
+    }, 10000);
 
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('focus', handleOnline);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       clearInterval(interval);
     };
   }, [refreshPendingCount, triggerSync]);

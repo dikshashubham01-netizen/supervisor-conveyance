@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Download, Sparkles, CheckCircle2, AlertCircle, ExternalLink, X, Smartphone, ArrowDownCircle } from 'lucide-react';
 import { isNewerVersion } from '../../utils/versionCheck';
 
@@ -10,8 +10,6 @@ export function UpdateModal({ isOpen, onClose, currentVersion, currentVersionCod
   const [completed, setCompleted] = useState(false);
   const [error, setError] = useState(null);
 
-  if (!isOpen) return null;
-
   const latestVersion = remoteInfo?.version || currentVersion || '1.0.7';
   const latestVersionCode = remoteInfo?.versionCode;
   const hasUpdate = isNewerVersion(latestVersion, currentVersion, latestVersionCode, currentVersionCode);
@@ -20,14 +18,7 @@ export function UpdateModal({ isOpen, onClose, currentVersion, currentVersionCod
   const apkUrl = remoteInfo?.apkUrl || 'https://supervisor-conveyance.vercel.app/app-release.apk';
   const changelog = remoteInfo?.changelog || 'Mandatory auto-update enforcement, one-tap instant download on update check, and AWS 24/7 cloud sync.';
 
-  // If autoStartDownload is true and an update is available, download immediately
-  React.useEffect(() => {
-    if (isOpen && autoStartDownload && hasUpdate && !downloading && !completed) {
-      startInAppDownload();
-    }
-  }, [isOpen, autoStartDownload, hasUpdate]);
-
-  const startInAppDownload = async () => {
+  const startInAppDownload = useCallback(async () => {
     try {
       setDownloading(true);
       setProgress(0);
@@ -79,11 +70,21 @@ export function UpdateModal({ isOpen, onClose, currentVersion, currentVersionCod
       setError(err.message || 'Direct download failed. Please use browser download option.');
       setDownloading(false);
     }
-  };
+  }, [apkUrl, latestVersion]);
+
+  // If autoStartDownload is true and an update is available, download immediately
+  useEffect(() => {
+    if (isOpen && autoStartDownload && hasUpdate && !downloading && !completed) {
+      startInAppDownload();
+    }
+  }, [isOpen, autoStartDownload, hasUpdate, downloading, completed, startInAppDownload]);
 
   const openInBrowser = () => {
     window.open(downloadPageUrl, '_system');
   };
+
+  // Safe early return ONLY AFTER all hooks are defined
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.85)' }}>

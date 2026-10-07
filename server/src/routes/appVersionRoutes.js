@@ -6,12 +6,12 @@ const router = express.Router();
 
 const DEFAULT_VERSION = {
   id: 'latest',
-  version: '1.0.7',
-  version_code: 8,
+  version: '1.0.8',
+  version_code: 9,
   min_supported_version: '1.0.7',
   apk_url: 'https://supervisor-conveyance.vercel.app/app-release.apk',
   download_page_url: 'https://supervisor-conveyance.vercel.app/download',
-  changelog: 'Mandatory auto-update enforcement, one-tap instant download on update check, and AWS 24/7 cloud sync.',
+  changelog: 'Fixed Update screen crash, added offline GPS location capture without internet with auto-sync when online, and supervisor sub-division support.',
   release_date: new Date().toISOString()
 };
 
