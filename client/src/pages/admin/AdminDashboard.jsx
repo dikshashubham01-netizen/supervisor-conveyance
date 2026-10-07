@@ -14,7 +14,8 @@ import {
   ChevronRight,
   ShieldCheck,
   RefreshCw,
-  ExternalLink
+  ExternalLink,
+  Zap
 } from 'lucide-react';
 
 export function AdminDashboard({ onNavigate }) {
@@ -181,7 +182,7 @@ export function AdminDashboard({ onNavigate }) {
       </div>
 
       {/* Quick Navigation Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         <button
           type="button"
           onClick={() => onNavigate('live-map')}
@@ -202,6 +203,18 @@ export function AdminDashboard({ onNavigate }) {
           <div className="flex items-center gap-3">
             <ShieldCheck className="w-5 h-5 text-blue-400" />
             <span className="font-semibold text-sm text-slate-200">Verify Sessions</span>
+          </div>
+          <ChevronRight className="w-4 h-4 text-slate-500" />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onNavigate('meter-installations')}
+          className="p-4 rounded-xl bg-slate-850 hover:bg-slate-800 border border-cyan-800/60 text-left transition flex items-center justify-between"
+        >
+          <div className="flex items-center gap-3">
+            <Zap className="w-5 h-5 text-cyan-400" />
+            <span className="font-semibold text-sm text-slate-200">Meter Counts</span>
           </div>
           <ChevronRight className="w-4 h-4 text-slate-500" />
         </button>
@@ -259,6 +272,7 @@ export function AdminDashboard({ onNavigate }) {
                 <th className="py-3 px-3">GPS KM</th>
                 <th className="py-3 px-3">Odometer KM</th>
                 <th className="py-3 px-3">Approved KM</th>
+                <th className="py-3 px-3">Meters</th>
                 <th className="py-3 px-3">Conveyance</th>
                 <th className="py-3 px-3">Status</th>
                 <th className="py-3 px-3 text-right">Action</th>
@@ -277,6 +291,7 @@ export function AdminDashboard({ onNavigate }) {
                   <td className="py-3 px-3 font-mono text-emerald-400">{formatDistance(s.gps_distance_km)}</td>
                   <td className="py-3 px-3 font-mono text-blue-400">{formatDistance(s.odometer_distance_km)}</td>
                   <td className="py-3 px-3 font-mono font-bold text-white">{formatDistance(s.approved_distance_km)}</td>
+                  <td className="py-3 px-3 font-mono font-bold text-cyan-400">{s.meters_installed ?? 0}</td>
                   <td className="py-3 px-3 font-mono font-bold text-brand-300">{formatCurrency(s.conveyance_amount)}</td>
                   <td className="py-3 px-3">
                     <StatusBadge status={s.status} />

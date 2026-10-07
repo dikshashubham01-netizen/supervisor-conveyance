@@ -176,6 +176,7 @@ export function DutySessionsPage() {
                 <th className="py-3.5 px-4">GPS KM</th>
                 <th className="py-3.5 px-4">Odometer KM</th>
                 <th className="py-3.5 px-4">Approved KM</th>
+                <th className="py-3.5 px-4">Meters</th>
                 <th className="py-3.5 px-4">Conveyance</th>
                 <th className="py-3.5 px-4">Status</th>
                 <th className="py-3.5 px-4 text-right">Verification</th>
@@ -184,7 +185,7 @@ export function DutySessionsPage() {
             <tbody className="divide-y divide-slate-800/60">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="py-8 text-center text-slate-500">
+                  <td colSpan={12} className="py-8 text-center text-slate-500">
                     No duty sessions found matching the filter.
                   </td>
                 </tr>
@@ -217,6 +218,9 @@ export function DutySessionsPage() {
                     </td>
                     <td className="py-3 px-4 font-mono font-bold text-white">
                       {formatDistance(s.approved_distance_km)}
+                    </td>
+                    <td className="py-3 px-4 font-mono font-bold text-cyan-400">
+                      {s.meters_installed ?? 0}
                     </td>
                     <td className="py-3 px-4 font-mono font-bold text-brand-300">
                       {formatCurrency(s.conveyance_amount)}

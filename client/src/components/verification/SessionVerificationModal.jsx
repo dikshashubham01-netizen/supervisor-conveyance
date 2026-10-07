@@ -210,6 +210,12 @@ function SessionVerificationModalInner({ isOpen, onClose, sessionId, onActionCom
 
             <div className="flex items-center gap-4">
               <div className="text-right">
+                <span className="text-xs text-slate-400 block">Meters Installed</span>
+                <span className="text-xl font-bold font-mono text-cyan-400">
+                  {session.meters_installed ?? 0}
+                </span>
+              </div>
+              <div className="text-right pl-4 border-l border-slate-700">
                 <span className="text-xs text-slate-400 block">Approved KM</span>
                 <span className="text-xl font-bold font-mono text-emerald-400">
                   {formatDistance(session.approved_distance_km)}

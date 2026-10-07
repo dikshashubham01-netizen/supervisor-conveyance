@@ -167,7 +167,8 @@ router.post(
       if (!selfieFile) return res.status(400).json({ error: 'Live End Selfie photo is required' });
       if (!odometerFile) return res.status(400).json({ error: 'End Bike Odometer photo is required' });
 
-      const { latitude, longitude, accuracy, odometerOcr, odometerManual, odometerFinal } = req.body;
+      const { latitude, longitude, accuracy, odometerOcr, odometerManual, odometerFinal, metersInstalled, meters_installed } = req.body;
+      const meterCount = Math.max(0, parseInt(metersInstalled ?? meters_installed ?? 0, 10) || 0);
 
       const finalEndKm = parseFloat(odometerFinal);
       if (isNaN(finalEndKm) || finalEndKm < 0) return res.status(400).json({ error: 'Valid confirmed end KM is required' });
@@ -221,8 +222,8 @@ router.post(
           end_odometer_ocr = $5, end_odometer_manual = $6, end_odometer_final = $7,
           gps_distance_km = $8, odometer_distance_km = $9, approved_distance_km = $10,
           distance_selection_reason = $11, conveyance_rate = $12, conveyance_amount = $13,
-          status = $14, warnings = $15, updated_at = NOW()
-        WHERE id = $16`,
+          status = $14, warnings = $15, meters_installed = $16, updated_at = NOW()
+        WHERE id = $17`,
         [
           lat, lng,
           selfieFile, odometerFile,
@@ -237,20 +238,22 @@ router.post(
           evaluation.conveyanceAmount,
           evaluation.status,
           JSON.stringify(evaluation.warnings),
+          meterCount,
           activeSession.id
         ]
       );
 
       await db.run(
         `INSERT INTO audit_logs (id, user_id, duty_session_id, action, new_value, reason)
-         VALUES ($1, $2, $3, 'END_DUTY', $4, 'Supervisor completed duty')`,
+         VALUES ($1, $2, $3, 'END_DUTY', $4, 'Supervisor completed duty with meter count')`,
         [
           uuidv4(), supervisorId, activeSession.id,
           JSON.stringify({
             startKm: activeSession.start_odometer_final,
             endKm: finalEndKm,
             approvedKm: evaluation.approvedDistanceKm,
-            conveyance: evaluation.conveyanceAmount
+            conveyance: evaluation.conveyanceAmount,
+            metersInstalled: meterCount
           })
         ]
       );
@@ -258,7 +261,7 @@ router.post(
       await syncAttendanceForCompletedDuty(activeSession.id);
 
       const completed = await db.queryOne(
-        `SELECT ds.*, u.name AS supervisor_name, u.employee_id
+        `SELECT ds.*, u.name AS supervisor_name, u.employee_id, u.subdivision AS supervisor_subdivision
          FROM duty_sessions ds JOIN users u ON u.id = ds.supervisor_id WHERE ds.id = $1`,
         [activeSession.id]
       );
@@ -317,6 +320,130 @@ router.get('/history', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('Duty history error:', err);
     res.status(500).json({ error: 'Failed to fetch duty history' });
+  }
+});
+
+// 4.1 Meter Installation Report (Day-wise and Supervisor-wise)
+router.get('/meters-report', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { startDate, endDate, supervisorId, subdivision } = req.query;
+
+    const params = [
+      startDate || null,
+      endDate || null,
+      supervisorId || null,
+      subdivision || null
+    ];
+
+    // Day-wise breakdown per supervisor
+    const sessions = await db.queryAll(`
+      SELECT
+        ds.id,
+        ds.supervisor_id,
+        u.name AS supervisor_name,
+        u.employee_id,
+        u.subdivision,
+        u.phone,
+        DATE(ds.start_time AT TIME ZONE 'Asia/Kolkata') AS duty_date,
+        ds.start_time,
+        ds.end_time,
+        COALESCE(ds.meters_installed, 0) AS meters_installed,
+        ds.gps_distance_km,
+        ds.odometer_distance_km,
+        ds.approved_distance_km,
+        ds.conveyance_amount,
+        ds.status
+      FROM duty_sessions ds
+      JOIN users u ON u.id = ds.supervisor_id
+      WHERE ds.status != 'ON_DUTY'
+        AND ($1::text IS NULL OR DATE(ds.start_time AT TIME ZONE 'Asia/Kolkata') >= $1::date)
+        AND ($2::text IS NULL OR DATE(ds.start_time AT TIME ZONE 'Asia/Kolkata') <= $2::date)
+        AND ($3::text IS NULL OR ds.supervisor_id = $3)
+        AND ($4::text IS NULL OR LOWER(u.subdivision) = LOWER($4))
+      ORDER BY ds.start_time DESC
+    `, params);
+
+    // Supervisor-wise aggregated totals
+    const supervisorSummary = await db.queryAll(`
+      SELECT
+        u.id AS supervisor_id,
+        u.name AS supervisor_name,
+        u.employee_id,
+        u.subdivision,
+        COUNT(ds.id) AS total_duties,
+        COALESCE(SUM(ds.meters_installed), 0) AS total_meters,
+        ROUND(COALESCE(AVG(ds.meters_installed), 0)::numeric, 1) AS avg_meters_per_duty,
+        ROUND(COALESCE(SUM(ds.approved_distance_km), 0)::numeric, 2) AS total_km,
+        ROUND(COALESCE(SUM(ds.conveyance_amount), 0)::numeric, 2) AS total_conveyance
+      FROM users u
+      LEFT JOIN duty_sessions ds ON ds.supervisor_id = u.id AND ds.status != 'ON_DUTY'
+        AND ($1::text IS NULL OR DATE(ds.start_time AT TIME ZONE 'Asia/Kolkata') >= $1::date)
+        AND ($2::text IS NULL OR DATE(ds.start_time AT TIME ZONE 'Asia/Kolkata') <= $2::date)
+      WHERE u.role = 'supervisor'
+        AND ($3::text IS NULL OR u.id = $3)
+        AND ($4::text IS NULL OR LOWER(u.subdivision) = LOWER($4))
+      GROUP BY u.id, u.name, u.employee_id, u.subdivision
+      ORDER BY total_meters DESC, u.name ASC
+    `, params);
+
+    // Day-wise aggregated totals
+    const daySummary = await db.queryAll(`
+      SELECT
+        DATE(ds.start_time AT TIME ZONE 'Asia/Kolkata') AS duty_date,
+        COUNT(DISTINCT ds.supervisor_id) AS active_supervisors,
+        COUNT(ds.id) AS total_duties,
+        COALESCE(SUM(ds.meters_installed), 0) AS total_meters,
+        ROUND(COALESCE(SUM(ds.approved_distance_km), 0)::numeric, 2) AS total_km
+      FROM duty_sessions ds
+      JOIN users u ON u.id = ds.supervisor_id
+      WHERE ds.status != 'ON_DUTY'
+        AND ($1::text IS NULL OR DATE(ds.start_time AT TIME ZONE 'Asia/Kolkata') >= $1::date)
+        AND ($2::text IS NULL OR DATE(ds.start_time AT TIME ZONE 'Asia/Kolkata') <= $2::date)
+        AND ($3::text IS NULL OR ds.supervisor_id = $3)
+        AND ($4::text IS NULL OR LOWER(u.subdivision) = LOWER($4))
+      GROUP BY DATE(ds.start_time AT TIME ZONE 'Asia/Kolkata')
+      ORDER BY duty_date DESC
+    `, params);
+
+    let totalMetersInstalled = 0;
+    let totalApprovedKm = 0;
+    for (const s of sessions) {
+      totalMetersInstalled += Number(s.meters_installed) || 0;
+      totalApprovedKm += Number(s.approved_distance_km) || 0;
+    }
+
+    res.json({
+      summary: {
+        totalMetersInstalled,
+        totalApprovedKm: Number(totalApprovedKm.toFixed(2)),
+        totalDuties: sessions.length,
+        activeSupervisorsCount: supervisorSummary.filter(s => Number(s.total_duties) > 0).length
+      },
+      supervisorSummary,
+      daySummary,
+      sessions
+    });
+  } catch (err) {
+    console.error('Error fetching meters report:', err);
+    res.status(500).json({ error: 'Failed to fetch meter report: ' + err.message });
+  }
+});
+
+// 4.2 Admin update meter count for a specific session
+router.put('/:id/meter-count', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { metersInstalled } = req.body;
+    const count = Math.max(0, parseInt(metersInstalled, 10) || 0);
+
+    const existing = await db.queryOne('SELECT id, meters_installed FROM duty_sessions WHERE id = $1', [id]);
+    if (!existing) return res.status(404).json({ error: 'Duty session not found' });
+
+    await db.run('UPDATE duty_sessions SET meters_installed = $1, updated_at = NOW() WHERE id = $2', [count, id]);
+    res.json({ message: 'Meter count updated successfully', meters_installed: count });
+  } catch (err) {
+    console.error('Update meter count error:', err);
+    res.status(500).json({ error: 'Failed to update meter count: ' + err.message });
   }
 });
 

@@ -155,6 +155,18 @@ export const api = {
     }
   },
 
+  meters: {
+    getReport: (params = {}) => {
+      return request(`/duty/meters-report${toQueryString(params)}`);
+    },
+    updateCount: (sessionId, metersInstalled) => {
+      return request(`/duty/${sessionId}/meter-count`, {
+        method: 'PUT',
+        body: JSON.stringify({ metersInstalled })
+      });
+    }
+  },
+
   attendance: {
     getMonthly: (params = {}) => {
       return request(`/attendance${toQueryString(params)}`);

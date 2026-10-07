@@ -18,6 +18,7 @@ import { ReportsPage } from './pages/admin/ReportsPage';
 import { AuditLogsPage } from './pages/admin/AuditLogsPage';
 import { AttendancePage } from './pages/admin/AttendancePage';
 import { MonthlyConveyancePage } from './pages/admin/MonthlyConveyancePage';
+import { MeterInstallationsPage } from './pages/admin/MeterInstallationsPage';
 
 import {
   LayoutDashboard,
@@ -30,7 +31,8 @@ import {
   Navigation,
   Clock,
   UserCheck,
-  Bike
+  Bike,
+  Zap
 } from 'lucide-react';
 
 function AppInner() {
@@ -139,6 +141,18 @@ function AppInner() {
             </button>
 
             <button
+              onClick={() => setCurrentPage('meter-installations')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition ${
+                currentPage === 'meter-installations'
+                  ? 'bg-slate-800 text-cyan-300 font-semibold shadow border border-cyan-800'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-850'
+              }`}
+            >
+              <Zap className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Meter Installations</span>
+            </button>
+
+            <button
               onClick={() => setCurrentPage('attendance')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition ${
                 currentPage === 'attendance'
@@ -213,6 +227,7 @@ function AppInner() {
             {currentPage === 'live-map' && <LiveMapPage />}
             {currentPage === 'supervisors' && <SupervisorsPage />}
             {currentPage === 'duty-sessions' && <DutySessionsPage />}
+            {currentPage === 'meter-installations' && <MeterInstallationsPage />}
             {currentPage === 'attendance' && <AttendancePage />}
             {currentPage === 'conveyance' && <MonthlyConveyancePage />}
             {currentPage === 'reports' && <ReportsPage />}

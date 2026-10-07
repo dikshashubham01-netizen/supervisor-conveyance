@@ -134,9 +134,15 @@ export async function initDatabase() {
       status TEXT NOT NULL DEFAULT 'ON_DUTY' CHECK(status IN ('ON_DUTY', 'PENDING_VERIFICATION', 'APPROVED', 'REJECTED', 'NEEDS_REVIEW', 'AUTO_ENDED')),
       review_notes TEXT,
       warnings TEXT DEFAULT '[]',
+      meters_installed INTEGER DEFAULT 0,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `);
+
+  // Migration: add meters_installed column if it doesn't exist (for existing DBs)
+  await db.query(`
+    ALTER TABLE duty_sessions ADD COLUMN IF NOT EXISTS meters_installed INTEGER DEFAULT 0
   `);
 
   // Ensure duty_sessions status check allows AUTO_ENDED on existing installations

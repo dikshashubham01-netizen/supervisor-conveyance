@@ -5,12 +5,15 @@ import { OdometerScannerModal } from '../components/camera/OdometerScannerModal'
 import { useGeolocation } from '../hooks/useGeolocation';
 import { api } from '../api/client';
 import { formatCurrency, formatDistance, formatTime } from '../utils/formatters';
-import { Camera, Gauge, CheckCircle2, AlertTriangle, ArrowRight, Check } from 'lucide-react';
+import { Camera, Gauge, CheckCircle2, AlertTriangle, ArrowRight, Check, Zap } from 'lucide-react';
 
 export function EndDutyWizard({ activeDuty, onDutyEnded, onCancel }) {
   const [currentStep, setCurrentStep] = useState(1);
   const [isSelfieModalOpen, setIsSelfieModalOpen] = useState(false);
   const [isOdometerModalOpen, setIsOdometerModalOpen] = useState(false);
+
+  const [metersInstalled, setMetersInstalled] = useState('');
+  const [meterError, setMeterError] = useState(null);
 
   const [selfieData, setSelfieData] = useState(null);
   const [odometerData, setOdometerData] = useState(null);
@@ -37,6 +40,8 @@ export function EndDutyWizard({ activeDuty, onDutyEnded, onCancel }) {
 
       const pos = await getCurrentPositionAsync();
 
+      const count = parseInt(metersInstalled, 10) || 0;
+
       const formData = new FormData();
       formData.append('selfie', selfieData.file);
       formData.append('odometer', odoData.image.file);
@@ -46,6 +51,7 @@ export function EndDutyWizard({ activeDuty, onDutyEnded, onCancel }) {
       formData.append('odometerOcr', odoData.detectedKm ?? '');
       formData.append('odometerManual', odoData.manualKm ?? '');
       formData.append('odometerFinal', odoData.finalKm);
+      formData.append('metersInstalled', count);
 
       const res = await api.duty.end(formData);
       setCompletedSummary(res.summary);
@@ -96,6 +102,63 @@ export function EndDutyWizard({ activeDuty, onDutyEnded, onCancel }) {
               </div>
             </div>
 
+            {/* Meter Count Input Card */}
+            <div className="w-full bg-slate-950 p-4 rounded-2xl border border-slate-800 flex flex-col gap-2.5 text-left">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <Zap className="w-4 h-4 text-cyan-400" />
+                  <span>Today Installed Meter Count</span>
+                </label>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-800 font-semibold">
+                  Required
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const current = parseInt(metersInstalled, 10) || 0;
+                    setMetersInstalled(String(Math.max(0, current - 1)));
+                    setMeterError(null);
+                  }}
+                  className="w-11 h-11 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-white font-bold text-xl flex items-center justify-center border border-slate-700 transition"
+                >
+                  −
+                </button>
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="0"
+                  value={metersInstalled}
+                  onChange={(e) => {
+                    setMetersInstalled(e.target.value);
+                    setMeterError(null);
+                  }}
+                  className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-center font-mono font-bold text-xl text-cyan-300 focus:outline-none focus:border-cyan-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const current = parseInt(metersInstalled, 10) || 0;
+                    setMetersInstalled(String(current + 1));
+                    setMeterError(null);
+                  }}
+                  className="w-11 h-11 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-white font-bold text-xl flex items-center justify-center border border-slate-700 transition"
+                >
+                  +
+                </button>
+              </div>
+
+              {meterError ? (
+                <p className="text-[11px] text-rose-400 font-medium">{meterError}</p>
+              ) : (
+                <p className="text-[10px] text-slate-400">
+                  Enter the total number of meters installed today (enter 0 if none).
+                </p>
+              )}
+            </div>
+
             <div className="grid grid-cols-2 gap-2.5 w-full pt-1">
               <button
                 type="button"
@@ -106,8 +169,15 @@ export function EndDutyWizard({ activeDuty, onDutyEnded, onCancel }) {
               </button>
               <button
                 type="button"
-                onClick={() => setCurrentStep(2)}
-                className="py-3 px-3 rounded-2xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs shadow-lg shadow-amber-950"
+                onClick={() => {
+                  if (metersInstalled === '' || isNaN(metersInstalled) || parseInt(metersInstalled, 10) < 0) {
+                    setMeterError('Please enter today\'s meter count (enter 0 if none)');
+                    return;
+                  }
+                  setMeterError(null);
+                  setCurrentStep(2);
+                }}
+                className="py-3 px-3 rounded-2xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs shadow-lg shadow-amber-950 transition active:scale-95"
               >
                 Yes, End Duty
               </button>
@@ -252,6 +322,20 @@ export function EndDutyWizard({ activeDuty, onDutyEnded, onCancel }) {
                   {formatCurrency(completedSummary.conveyance_amount)}
                 </span>
               </div>
+            </div>
+
+            {/* Smart Meters Installed Display */}
+            <div className="p-4 rounded-2xl bg-cyan-950/70 border border-cyan-500/60 flex items-center justify-between">
+              <div>
+                <span className="text-[10px] text-cyan-300/80 block">Today's Work</span>
+                <span className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
+                  <Zap className="w-4 h-4 text-cyan-400" />
+                  Meters Installed
+                </span>
+              </div>
+              <span className="text-2xl font-black font-mono text-cyan-300">
+                {completedSummary?.meters_installed ?? metersInstalled ?? 0}
+              </span>
             </div>
 
             {/* Status */}
