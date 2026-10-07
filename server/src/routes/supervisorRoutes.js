@@ -21,19 +21,22 @@ router.get('/template', authenticateToken, requireAdmin, (req, res) => {
         'Employee ID': 'EMP002',
         'Full Name': 'Ramesh Kumar',
         'Phone Number': '9876543211',
-        'Password': 'User@123'
+        'Password': 'User@123',
+        'Sub-Division Name': 'Moran'
       },
       {
         'Employee ID': 'EMP003',
         'Full Name': 'Priya Sharma',
         'Phone Number': '9876543212',
-        'Password': 'User@123'
+        'Password': 'User@123',
+        'Sub-Division Name': 'Nazira'
       },
       {
         'Employee ID': 'EMP004',
         'Full Name': 'Amit Patel',
         'Phone Number': '9876543213',
-        'Password': 'User@123'
+        'Password': 'User@123',
+        'Sub-Division Name': 'Demow'
       }
     ];
 
@@ -42,7 +45,8 @@ router.get('/template', authenticateToken, requireAdmin, (req, res) => {
       { wch: 16 }, // Employee ID
       { wch: 22 }, // Full Name
       { wch: 16 }, // Phone Number
-      { wch: 16 }  // Password
+      { wch: 16 }, // Password
+      { wch: 22 }  // Sub-Division Name
     ];
 
     const workbook = XLSX.utils.book_new();
@@ -90,11 +94,13 @@ router.post('/bulk-upload', authenticateToken, requireAdmin, excelUpload.single(
       const nameRaw = row['Full Name'] || row['Name'] || row['name'] || row['full_name'] || row['Supervisor Name'] || row['Employee Name'] || '';
       const phoneRaw = row['Phone Number'] || row['Phone'] || row['phone'] || row['Mobile'] || row['Mobile Number'] || row['Contact'] || '';
       const passwordRaw = row['Password'] || row['password'] || row['Pass'] || 'Soumya@123';
+      const subdivisionRaw = row['Sub-Division Name'] || row['Sub Division Name'] || row['Subdivision'] || row['SubDivision'] || row['subdivision'] || row['Sub Division'] || '';
 
       const empId = ('' + empIdRaw).trim().toUpperCase();
       const name = ('' + nameRaw).trim();
       const phone = ('' + phoneRaw).trim();
       const password = ('' + passwordRaw).trim() || 'Soumya@123';
+      const subdivision = ('' + subdivisionRaw).trim() || null;
 
       if (!empId) {
         skippedCount++;
@@ -120,13 +126,13 @@ router.post('/bulk-upload', authenticateToken, requireAdmin, excelUpload.single(
       const passwordHash = await bcrypt.hash(password, 10);
 
       await db.run(
-        `INSERT INTO users (id, employee_id, name, phone, password_hash, role, status)
-         VALUES ($1, $2, $3, $4, $5, 'supervisor', 'active')`,
-        [id, empId, name, phone || null, passwordHash]
+        `INSERT INTO users (id, employee_id, name, phone, password_hash, role, status, subdivision)
+         VALUES ($1, $2, $3, $4, $5, 'supervisor', 'active', $6)`,
+        [id, empId, name, phone || null, passwordHash, subdivision]
       );
 
       createdCount++;
-      createdList.push(`${empId} — ${name}`);
+      createdList.push(`${empId} — ${name}${subdivision ? ` (${subdivision})` : ''}`);
     }
 
     if (createdCount > 0) {
@@ -155,7 +161,7 @@ router.get('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const supervisors = await db.queryAll(`
       SELECT
-        u.id, u.employee_id, u.name, u.phone, u.status, u.created_at,
+        u.id, u.employee_id, u.name, u.phone, u.status, u.subdivision, u.created_at,
         ds.id AS active_duty_id,
         ds.start_time AS active_duty_start,
         ds.gps_distance_km AS active_duty_distance,
@@ -177,7 +183,7 @@ router.get('/', authenticateToken, requireAdmin, async (req, res) => {
 // Create a new supervisor
 router.post('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { employee_id, name, phone, password } = req.body;
+    const { employee_id, name, phone, password, subdivision } = req.body;
     if (!employee_id || !name || !password) {
       return res.status(400).json({ error: 'Employee ID, Name, and Password are required' });
     }
@@ -192,8 +198,8 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
     const password_hash = await bcrypt.hash(password, 10);
 
     await db.run(
-      `INSERT INTO users (id, employee_id, name, phone, password_hash, role, status) VALUES ($1, $2, $3, $4, $5, 'supervisor', 'active')`,
-      [id, cleanEmpId, name.trim(), phone ? phone.trim() : null, password_hash]
+      `INSERT INTO users (id, employee_id, name, phone, password_hash, role, status, subdivision) VALUES ($1, $2, $3, $4, $5, 'supervisor', 'active', $6)`,
+      [id, cleanEmpId, name.trim(), phone ? phone.trim() : null, password_hash, subdivision ? subdivision.trim() : null]
     );
 
     await db.run(
@@ -203,7 +209,7 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
 
     res.status(201).json({
       message: 'Supervisor created successfully',
-      supervisor: { id, employee_id: cleanEmpId, name, phone, status: 'active' }
+      supervisor: { id, employee_id: cleanEmpId, name, phone, subdivision, status: 'active' }
     });
   } catch (err) {
     console.error('Create supervisor error:', err);
@@ -215,7 +221,7 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
 router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, phone, status, password } = req.body;
+    const { name, phone, status, password, subdivision } = req.body;
 
     const existing = await db.queryOne('SELECT * FROM users WHERE id = $1 AND role = $2', [id, 'supervisor']);
     if (!existing) return res.status(404).json({ error: 'Supervisor not found' });
@@ -226,12 +232,13 @@ router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
     }
 
     await db.run(
-      `UPDATE users SET name = $1, phone = $2, status = $3, password_hash = $4, updated_at = NOW() WHERE id = $5`,
+      `UPDATE users SET name = $1, phone = $2, status = $3, password_hash = $4, subdivision = $5, updated_at = NOW() WHERE id = $6`,
       [
         name ? name.trim() : existing.name,
         phone !== undefined ? (phone ? phone.trim() : null) : existing.phone,
         status || existing.status,
         passwordHash,
+        subdivision !== undefined ? (subdivision ? subdivision.trim() : null) : existing.subdivision,
         id
       ]
     );
@@ -240,8 +247,8 @@ router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
       `INSERT INTO audit_logs (id, user_id, action, old_value, new_value, reason) VALUES ($1, $2, 'UPDATE_SUPERVISOR', $3, $4, 'Admin updated supervisor details')`,
       [
         uuidv4(), req.user.id,
-        JSON.stringify({ name: existing.name, status: existing.status }),
-        JSON.stringify({ name: name || existing.name, status: status || existing.status })
+        JSON.stringify({ name: existing.name, status: existing.status, subdivision: existing.subdivision }),
+        JSON.stringify({ name: name || existing.name, status: status || existing.status, subdivision: subdivision !== undefined ? subdivision : existing.subdivision })
       ]
     );
 

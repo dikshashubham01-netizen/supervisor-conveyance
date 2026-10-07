@@ -33,6 +33,7 @@ export function SupervisorsPage() {
     name: '',
     phone: '',
     password: '',
+    subdivision: '',
     status: 'active'
   });
   const [modalSubmitting, setModalSubmitting] = useState(false);
@@ -68,6 +69,7 @@ export function SupervisorsPage() {
       name: '',
       phone: '',
       password: '',
+      subdivision: '',
       status: 'active'
     });
     setModalError(null);
@@ -81,6 +83,7 @@ export function SupervisorsPage() {
       name: sup.name,
       phone: sup.phone || '',
       password: '', // Blank unless changing
+      subdivision: sup.subdivision || '',
       status: sup.status
     });
     setModalError(null);
@@ -98,6 +101,7 @@ export function SupervisorsPage() {
           name: formData.name,
           phone: formData.phone,
           status: formData.status,
+          subdivision: formData.subdivision || '',
           password: formData.password || undefined
         });
       } else {
@@ -168,7 +172,8 @@ export function SupervisorsPage() {
     (s) =>
       s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       s.employee_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (s.phone && s.phone.includes(searchTerm))
+      (s.phone && s.phone.includes(searchTerm)) ||
+      (s.subdivision && s.subdivision.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   return (
@@ -228,7 +233,7 @@ export function SupervisorsPage() {
         <Search className="w-4 h-4 text-slate-400 ml-2" />
         <input
           type="text"
-          placeholder="Search by name, employee ID, or phone..."
+          placeholder="Search by name, employee ID, phone, or sub-division..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="w-full bg-transparent text-sm text-white placeholder-slate-500 focus:outline-none"
@@ -242,6 +247,7 @@ export function SupervisorsPage() {
             <thead>
               <tr className="border-b border-slate-800 text-slate-400 uppercase tracking-wider bg-slate-900/60">
                 <th className="py-3.5 px-4">Employee</th>
+                <th className="py-3.5 px-4">Sub-Division</th>
                 <th className="py-3.5 px-4">Phone</th>
                 <th className="py-3.5 px-4">Duty Status</th>
                 <th className="py-3.5 px-4">Total Duties</th>
@@ -254,7 +260,7 @@ export function SupervisorsPage() {
             <tbody className="divide-y divide-slate-800/60">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-8 text-center text-slate-500">
+                  <td colSpan={9} className="py-8 text-center text-slate-500">
                     No supervisors found matching search criteria.
                   </td>
                 </tr>
@@ -264,6 +270,15 @@ export function SupervisorsPage() {
                     <td className="py-3 px-4">
                       <div className="font-bold text-white text-sm">{s.name}</div>
                       <div className="text-[11px] text-slate-400 font-mono">{s.employee_id}</div>
+                    </td>
+                    <td className="py-3 px-4">
+                      {s.subdivision ? (
+                        <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-950 text-indigo-300 border border-indigo-800">
+                          {s.subdivision}
+                        </span>
+                      ) : (
+                        <span className="text-slate-600 text-[11px]">—</span>
+                      )}
                     </td>
                     <td className="py-3 px-4 text-slate-300 font-mono">
                       {s.phone || 'N/A'}
@@ -388,6 +403,17 @@ export function SupervisorsPage() {
             />
           </div>
 
+          <div>
+            <label className="text-slate-300 font-semibold block mb-1">Sub-Division Name</label>
+            <input
+              type="text"
+              placeholder="e.g. Moran, Nazira, Demow..."
+              value={formData.subdivision}
+              onChange={(e) => setFormData({ ...formData, subdivision: e.target.value })}
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-brand-500"
+            />
+          </div>
+
           {editingSupervisor && (
             <div>
               <label className="text-slate-300 font-semibold block mb-1">Status</label>
@@ -450,8 +476,8 @@ export function SupervisorsPage() {
               </button>
             </div>
             <p className="text-slate-400 text-[11px] leading-relaxed">
-              Your Excel file should have these 4 columns: <br />
-              <strong className="text-slate-200">Employee ID</strong>, <strong className="text-slate-200">Full Name</strong>, <strong className="text-slate-200">Phone Number</strong>, <strong className="text-slate-200">Password</strong>.
+              Your Excel file should have these 5 columns: <br />
+              <strong className="text-slate-200">Employee ID</strong>, <strong className="text-slate-200">Full Name</strong>, <strong className="text-slate-200">Phone Number</strong>, <strong className="text-slate-200">Password</strong>, <strong className="text-slate-200">Sub-Division Name</strong>.
             </p>
           </div>
 

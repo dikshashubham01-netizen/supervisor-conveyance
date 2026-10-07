@@ -14,7 +14,8 @@ import {
   AlertCircle,
   Eye,
   EyeOff,
-  ShieldCheck
+  ShieldCheck,
+  MapPin
 } from 'lucide-react';
 
 export function ProfileModal({ isOpen, onClose }) {
@@ -143,6 +144,19 @@ export function ProfileModal({ isOpen, onClose }) {
                 {user?.phone || 'Not Registered'}
               </span>
             </div>
+
+            {/* Sub-Division */}
+            {user?.subdivision && (
+              <div className="flex items-center justify-between py-1">
+                <span className="text-slate-400 flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-slate-500" />
+                  Sub-Division
+                </span>
+                <span className="text-indigo-300 font-semibold bg-indigo-950/80 px-2 py-0.5 rounded border border-indigo-800/80 text-[11px]">
+                  {user.subdivision}
+                </span>
+              </div>
+            )}
           </div>
         </div>
 

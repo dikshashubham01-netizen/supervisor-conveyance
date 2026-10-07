@@ -83,9 +83,15 @@ export async function initDatabase() {
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL CHECK(role IN ('admin', 'supervisor')),
       status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive')),
+      subdivision TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `);
+
+  // Migration: add subdivision column if it doesn't exist (for existing DBs)
+  await db.query(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS subdivision TEXT
   `);
 
   await db.query(`

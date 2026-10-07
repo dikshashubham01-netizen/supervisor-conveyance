@@ -197,7 +197,15 @@ export function SupervisorDashboard() {
           </div>
           <div>
             <div className="font-bold text-sm text-white leading-tight">{user?.name}</div>
-            <div className="text-[11px] text-slate-400 font-mono">{user?.employee_id}</div>
+            <div className="text-[11px] text-slate-400 font-mono flex items-center gap-1.5">
+              <span>{user?.employee_id}</span>
+              {user?.subdivision && (
+                <>
+                  <span className="text-slate-600">•</span>
+                  <span className="text-indigo-400 font-sans font-medium">{user.subdivision}</span>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
