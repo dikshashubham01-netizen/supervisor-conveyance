@@ -1,6 +1,5 @@
 import React, { useState, useRef } from 'react';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
-import { createWorker } from 'tesseract.js';
 import { Camera as CameraIcon, Cpu, Edit3, Check, RefreshCw, AlertTriangle, X, Sparkles, Upload } from 'lucide-react';
 import { api } from '../../api/client';
 
@@ -59,6 +58,7 @@ export function OdometerScannerModal({ isOpen, onClose, onConfirm, title = 'Bike
     setIsScanning(true);
 
     try {
+      const { createWorker } = await import('tesseract.js');
       const worker = await createWorker('eng');
       await worker.setParameters({ tessedit_char_whitelist: '0123456789KMkm., ' });
       const ret = await worker.recognize(dataUrl);

@@ -4,20 +4,26 @@ import { api, getToken } from '../../api/client';
 import { formatCurrency, formatDistance, formatTime } from '../../utils/formatters';
 import { Users, Navigation, AlertCircle, RefreshCw, ZoomIn } from 'lucide-react';
 
-export function LiveTrackingMap({ onSelectSupervisor, selectedSupervisorId }) {
+export function LiveTrackingMap({ supervisors: externalSupervisors, onSelectSupervisor, selectedSupervisorId, onRefresh }) {
   const mapContainerRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markersRef = useRef(new Map());
 
-  const [supervisors, setSupervisors] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [internalSupervisors, setInternalSupervisors] = useState([]);
+  const supervisors = externalSupervisors !== undefined ? externalSupervisors : internalSupervisors;
+  const [loading, setLoading] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState(new Date());
 
-  // Fetch live supervisors
+  // Fetch live supervisors only if not provided by parent
   const fetchLive = async () => {
+    if (externalSupervisors !== undefined) {
+      if (onRefresh) onRefresh();
+      return;
+    }
     try {
+      setLoading(true);
       const data = await api.tracking.getLive();
-      setSupervisors(data.supervisors || []);
+      setInternalSupervisors(data.supervisors || []);
       setLastRefreshed(new Date());
     } catch (err) {
       console.error('Failed to fetch live tracking:', err);
@@ -31,18 +37,22 @@ export function LiveTrackingMap({ onSelectSupervisor, selectedSupervisorId }) {
     if (!mapContainerRef.current || mapInstanceRef.current) return;
 
     const map = L.map(mapContainerRef.current, {
-      center: [19.0760, 72.8777], // Default center (Mumbai/India)
+      center: [19.0760, 72.8777], // Default center
       zoom: 12,
-      zoomControl: false
+      zoomControl: false,
+      preferCanvas: true
     });
 
     L.control.zoom({ position: 'topright' }).addTo(map);
 
-    // OpenStreetMap tile layer — free, no API key required
+    // OpenStreetMap tile layer with performance buffer
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      attribution: '&copy; OpenStreetMap contributors',
       subdomains: 'abc',
-      maxZoom: 19
+      maxZoom: 19,
+      crossOrigin: true,
+      keepBuffer: 3,
+      updateWhenIdle: true
     }).addTo(map);
 
     mapInstanceRef.current = map;
@@ -55,10 +65,12 @@ export function LiveTrackingMap({ onSelectSupervisor, selectedSupervisorId }) {
 
   // Poll periodically + listen to Server-Sent Events (SSE)
   useEffect(() => {
-    fetchLive();
-    const interval = setInterval(fetchLive, 10000); // 10s poll
+    if (externalSupervisors === undefined) {
+      fetchLive();
+    }
+    const interval = setInterval(fetchLive, 12000); // 12s poll
 
-    // SSE connection
+    // SSE connection with token query param
     let eventSource = null;
     const token = getToken();
     if (token) {
@@ -81,7 +93,7 @@ export function LiveTrackingMap({ onSelectSupervisor, selectedSupervisorId }) {
       clearInterval(interval);
       if (eventSource) eventSource.close();
     };
-  }, []);
+  }, [externalSupervisors]);
 
   // Update map markers when supervisors change
   useEffect(() => {

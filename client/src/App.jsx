@@ -1,24 +1,24 @@
-import React, { useState } from 'react';
+import React, { useState, lazy, Suspense } from 'react';
 import { useAuth } from './context/AuthContext';
 import { Navbar } from './components/common/Navbar';
 import { LoginPage } from './pages/auth/LoginPage';
 import { DownloadPage } from './pages/DownloadPage';
 
-// Supervisor Pages
-import { SupervisorDashboard } from './pages/supervisor/SupervisorDashboard';
-import { SupervisorHistory } from './pages/supervisor/SupervisorHistory';
+// Supervisor Pages (Lazy Loaded for fast initial load)
+const SupervisorDashboard = lazy(() => import('./pages/supervisor/SupervisorDashboard').then(m => ({ default: m.SupervisorDashboard })));
+const SupervisorHistory = lazy(() => import('./pages/supervisor/SupervisorHistory').then(m => ({ default: m.SupervisorHistory })));
 
-// Admin Pages
-import { AdminDashboard } from './pages/admin/AdminDashboard';
-import { LiveMapPage } from './pages/admin/LiveMapPage';
-import { SupervisorsPage } from './pages/admin/SupervisorsPage';
-import { DutySessionsPage } from './pages/admin/DutySessionsPage';
-import { ConveyanceSettingsPage } from './pages/admin/ConveyanceSettingsPage';
-import { ReportsPage } from './pages/admin/ReportsPage';
-import { AuditLogsPage } from './pages/admin/AuditLogsPage';
-import { AttendancePage } from './pages/admin/AttendancePage';
-import { MonthlyConveyancePage } from './pages/admin/MonthlyConveyancePage';
-import { MeterInstallationsPage } from './pages/admin/MeterInstallationsPage';
+// Admin Pages (Lazy Loaded for fast initial load)
+const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
+const LiveMapPage = lazy(() => import('./pages/admin/LiveMapPage').then(m => ({ default: m.LiveMapPage })));
+const SupervisorsPage = lazy(() => import('./pages/admin/SupervisorsPage').then(m => ({ default: m.SupervisorsPage })));
+const DutySessionsPage = lazy(() => import('./pages/admin/DutySessionsPage').then(m => ({ default: m.DutySessionsPage })));
+const ConveyanceSettingsPage = lazy(() => import('./pages/admin/ConveyanceSettingsPage').then(m => ({ default: m.ConveyanceSettingsPage })));
+const ReportsPage = lazy(() => import('./pages/admin/ReportsPage').then(m => ({ default: m.ReportsPage })));
+const AuditLogsPage = lazy(() => import('./pages/admin/AuditLogsPage').then(m => ({ default: m.AuditLogsPage })));
+const AttendancePage = lazy(() => import('./pages/admin/AttendancePage').then(m => ({ default: m.AttendancePage })));
+const MonthlyConveyancePage = lazy(() => import('./pages/admin/MonthlyConveyancePage').then(m => ({ default: m.MonthlyConveyancePage })));
+const MeterInstallationsPage = lazy(() => import('./pages/admin/MeterInstallationsPage').then(m => ({ default: m.MeterInstallationsPage })));
 
 import {
   LayoutDashboard,
@@ -217,24 +217,33 @@ function AppInner() {
 
       {/* Main Content View */}
       <main className="flex-1 pb-12">
-        {isSupervisor && (
-          <SupervisorDashboard />
-        )}
+        <Suspense
+          fallback={
+            <div className="p-16 flex flex-col items-center justify-center gap-3 text-slate-400">
+              <div className="w-8 h-8 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+              <span className="text-xs font-medium tracking-wide">Loading view...</span>
+            </div>
+          }
+        >
+          {isSupervisor && (
+            <SupervisorDashboard />
+          )}
 
-        {isAdmin && (
-          <>
-            {currentPage === 'dashboard' && <AdminDashboard onNavigate={setCurrentPage} />}
-            {currentPage === 'live-map' && <LiveMapPage />}
-            {currentPage === 'supervisors' && <SupervisorsPage />}
-            {currentPage === 'duty-sessions' && <DutySessionsPage />}
-            {currentPage === 'meter-installations' && <MeterInstallationsPage />}
-            {currentPage === 'attendance' && <AttendancePage />}
-            {currentPage === 'conveyance' && <MonthlyConveyancePage />}
-            {currentPage === 'reports' && <ReportsPage />}
-            {currentPage === 'settings' && <ConveyanceSettingsPage />}
-            {currentPage === 'audit-logs' && <AuditLogsPage />}
-          </>
-        )}
+          {isAdmin && (
+            <>
+              {currentPage === 'dashboard' && <AdminDashboard onNavigate={setCurrentPage} />}
+              {currentPage === 'live-map' && <LiveMapPage />}
+              {currentPage === 'supervisors' && <SupervisorsPage />}
+              {currentPage === 'duty-sessions' && <DutySessionsPage />}
+              {currentPage === 'meter-installations' && <MeterInstallationsPage />}
+              {currentPage === 'attendance' && <AttendancePage />}
+              {currentPage === 'conveyance' && <MonthlyConveyancePage />}
+              {currentPage === 'reports' && <ReportsPage />}
+              {currentPage === 'settings' && <ConveyanceSettingsPage />}
+              {currentPage === 'audit-logs' && <AuditLogsPage />}
+            </>
+          )}
+        </Suspense>
       </main>
     </div>
   );

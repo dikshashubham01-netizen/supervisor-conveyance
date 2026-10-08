@@ -140,7 +140,10 @@ export const api = {
       }),
     getLive: () => request('/tracking/live'),
     getRoute: (sessionId) => request(`/tracking/routes/${sessionId}`),
-    getStreamUrl: () => `${API_BASE}/tracking/stream`
+    getStreamUrl: () => {
+      const token = getToken();
+      return `${API_BASE}/tracking/stream${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+    }
   },
 
   reports: {

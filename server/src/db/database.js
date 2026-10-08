@@ -16,9 +16,10 @@ if (!config.databaseUrl) {
 export const pool = new Pool({
   connectionString: config.databaseUrl,
   ssl: { rejectUnauthorized: false },
-  max: 10,
+  max: 25,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000
+  connectionTimeoutMillis: 8000,
+  statement_timeout: 15000
 });
 
 pool.on('error', (err) => {

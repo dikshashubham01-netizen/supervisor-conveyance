@@ -110,8 +110,10 @@ export function LiveMapPage() {
       {/* Map Main Canvas */}
       <div className="flex-1 h-2/3 md:h-full p-2 md:p-4">
         <LiveTrackingMap
+          supervisors={activeSupervisors}
           selectedSupervisorId={selectedSupId}
           onSelectSupervisor={(sup) => setSelectedSupId(sup.supervisor_id)}
+          onRefresh={fetchLiveSupervisors}
         />
       </div>
 

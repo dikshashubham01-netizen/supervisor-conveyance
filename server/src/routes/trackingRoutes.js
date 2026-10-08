@@ -44,6 +44,7 @@ router.post('/sync', authenticateToken, requireSupervisor, async (req, res) => {
     let hasJump = false;
     let hasLowAccuracy = false;
 
+    const validPointsToInsert = [];
     for (const p of points) {
       const lat = parseFloat(p.latitude);
       const lng = parseFloat(p.longitude);
@@ -61,33 +62,87 @@ router.post('/sync', authenticateToken, requireSupervisor, async (req, res) => {
       if (isMock) hasMock = true;
       if (acc != null && acc > config.gps.maxAccuracyMeters) hasLowAccuracy = true;
 
-      const result = await db.run(
-        `INSERT INTO location_points (
+      validPointsToInsert.push({
+        id: uuidv4(),
+        clientUuid,
+        lat,
+        lng,
+        acc,
+        spd,
+        hdg,
+        alt,
+        prov,
+        isMock,
+        recAt
+      });
+    }
+
+    if (validPointsToInsert.length > 0) {
+      const valuePlaceholders = [];
+      const queryParams = [];
+      let pIdx = 1;
+
+      for (const p of validPointsToInsert) {
+        valuePlaceholders.push(
+          `($${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++}, 0, $${pIdx++})`
+        );
+        queryParams.push(
+          p.id, p.clientUuid, activeSession.id, supervisorId,
+          p.lat, p.lng, p.acc, p.spd, p.hdg, p.alt, p.prov, p.isMock, p.recAt
+        );
+      }
+
+      const insertSql = `
+        INSERT INTO location_points (
           id, client_uuid, duty_session_id, supervisor_id,
           latitude, longitude, accuracy, speed, heading, altitude, provider,
           is_mock, is_filtered, recorded_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 0, $13)
-        ON CONFLICT (client_uuid) DO NOTHING`,
-        [uuidv4(), clientUuid, activeSession.id, supervisorId, lat, lng, acc, spd, hdg, alt, prov, isMock, recAt]
-      );
-      if (result.rowCount > 0) insertedCount++;
+        ) VALUES ${valuePlaceholders.join(', ')}
+        ON CONFLICT (client_uuid) DO NOTHING
+      `;
+
+      const insertResult = await db.run(insertSql, queryParams);
+      insertedCount = insertResult.rowCount || 0;
     }
 
     // Run GPS cleaning across all points in the session to update filter flags and compute valid distance
     const allSessionPoints = await db.queryAll(
-      `SELECT * FROM location_points WHERE duty_session_id = $1 ORDER BY recorded_at ASC`,
+      `SELECT id, latitude, longitude, accuracy, is_mock, is_filtered, filter_reason, recorded_at
+       FROM location_points WHERE duty_session_id = $1 ORDER BY recorded_at ASC`,
       [activeSession.id]
     );
 
+    // Map existing filter state to identify only rows that truly changed
+    const existingStateMap = new Map();
+    for (const pt of allSessionPoints) {
+      existingStateMap.set(pt.id, {
+        is_filtered: Number(pt.is_filtered) || 0,
+        filter_reason: pt.filter_reason || null
+      });
+    }
+
     const cleaned = cleanGpsPoints(allSessionPoints);
 
-    // Update is_filtered and filter_reason flags in database
+    // Find points where filter flags actually CHANGED
+    const pointsToUpdate = [];
     for (const pt of cleaned.cleanedPoints) {
-      await db.run(
-        `UPDATE location_points SET is_filtered = $1, filter_reason = $2 WHERE id = $3`,
-        [pt.is_filtered, pt.filter_reason || null, pt.id]
-      );
       if (pt.filter_reason === 'GPS_JUMP_REJECTED') hasJump = true;
+      const prev = existingStateMap.get(pt.id);
+      const newFiltered = pt.is_filtered ? 1 : 0;
+      const newReason = pt.filter_reason || null;
+      if (!prev || prev.is_filtered !== newFiltered || prev.filter_reason !== newReason) {
+        pointsToUpdate.push({ id: pt.id, is_filtered: newFiltered, filter_reason: newReason });
+      }
+    }
+
+    // Only update the small subset of points that changed (typically 0-5 rows max)
+    if (pointsToUpdate.length > 0) {
+      for (const pt of pointsToUpdate) {
+        await db.run(
+          `UPDATE location_points SET is_filtered = $1, filter_reason = $2 WHERE id = $3`,
+          [pt.is_filtered, pt.filter_reason, pt.id]
+        );
+      }
     }
 
     // Update duty session gps_distance_km strictly from valid continuous points

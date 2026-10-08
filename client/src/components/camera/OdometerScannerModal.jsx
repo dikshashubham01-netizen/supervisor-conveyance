@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Camera, RefreshCw, Check, AlertTriangle, Cpu, Edit3, FlipHorizontal, Upload, Sparkles } from 'lucide-react';
-import { createWorker } from 'tesseract.js';
 import { Modal } from '../common/Modal';
 import { api } from '../../api/client';
 
@@ -130,7 +129,8 @@ export function OdometerScannerModal({ isOpen, onClose, onConfirm, title = 'Bike
     setIsScanning(true);
 
     try {
-      // 1. Client-side OCR via Tesseract.js Worker
+      // 1. Client-side OCR via dynamically imported Tesseract.js Worker
+      const { createWorker } = await import('tesseract.js');
       const worker = await createWorker('eng');
       // Set OCR parameters for digit recognition
       await worker.setParameters({
