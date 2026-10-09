@@ -5,7 +5,11 @@ import { authenticateToken, requireAdmin, requireSupervisor } from '../middlewar
 import { upload } from '../middleware/upload.js';
 import { cleanGpsPoints } from '../services/gpsCleaner.js';
 import { evaluateConveyance, getActiveRate } from '../services/conveyanceService.js';
-import { syncAttendanceForCompletedDuty } from '../services/attendanceService.js';
+import {
+  syncAttendanceForCompletedDuty,
+  getMonthlyMetersMatrix,
+  generateMonthlyMetersExcel
+} from '../services/attendanceService.js';
 
 const router = express.Router();
 
@@ -35,6 +39,14 @@ router.post(
       if (!odometerFile) return res.status(400).json({ error: 'Start Bike Odometer photo is required' });
 
       const { latitude, longitude, accuracy, odometerOcr, odometerManual, odometerFinal } = req.body;
+
+      if (odometerManual === undefined || odometerManual === null || String(odometerManual).trim() === '') {
+        return res.status(400).json({ error: 'Manual bike odometer KM reading is mandatory to start duty.' });
+      }
+      const parsedManualStart = parseFloat(odometerManual);
+      if (isNaN(parsedManualStart) || parsedManualStart < 0) {
+        return res.status(400).json({ error: 'Valid manual start bike odometer KM reading (>= 0) is mandatory.' });
+      }
 
       if (odometerFinal === undefined || odometerFinal === null || String(odometerFinal).trim() === '') {
         await db.run(
@@ -168,8 +180,30 @@ router.post(
       if (!odometerFile) return res.status(400).json({ error: 'End Bike Odometer photo is required' });
 
       const { latitude, longitude, accuracy, odometerOcr, odometerManual, odometerFinal, metersInstalled, meters_installed } = req.body;
-      const meterCount = Math.max(0, parseInt(metersInstalled ?? meters_installed ?? 0, 10) || 0);
 
+      // 1. Enforce mandatory manual odometer reading
+      if (odometerManual === undefined || odometerManual === null || String(odometerManual).trim() === '') {
+        return res.status(400).json({ error: 'Manual bike odometer KM reading is mandatory to end duty.' });
+      }
+      const parsedManualEnd = parseFloat(odometerManual);
+      if (isNaN(parsedManualEnd) || parsedManualEnd < 0) {
+        return res.status(400).json({ error: 'Valid manual end bike odometer KM reading (>= 0) is mandatory.' });
+      }
+
+      // 2. Enforce mandatory installed meter count
+      const rawMeterInput = metersInstalled !== undefined ? metersInstalled : meters_installed;
+      if (rawMeterInput === undefined || rawMeterInput === null || String(rawMeterInput).trim() === '') {
+        return res.status(400).json({ error: 'Today installed meter count is mandatory to end duty. Please enter meter count.' });
+      }
+      const meterCount = parseInt(rawMeterInput, 10);
+      if (isNaN(meterCount) || meterCount < 0) {
+        return res.status(400).json({ error: 'Valid installed meter count is mandatory to end duty (must be >= 0).' });
+      }
+
+      // 3. Enforce valid end KM
+      if (odometerFinal === undefined || odometerFinal === null || String(odometerFinal).trim() === '') {
+        return res.status(400).json({ error: 'End KM reading is required to end duty.' });
+      }
       const finalEndKm = parseFloat(odometerFinal);
       if (isNaN(finalEndKm) || finalEndKm < 0) return res.status(400).json({ error: 'Valid confirmed end KM is required' });
 
@@ -429,7 +463,48 @@ router.get('/meters-report', authenticateToken, requireAdmin, async (req, res) =
   }
 });
 
-// 4.2 Admin update meter count for a specific session
+// 4.2 Monthly Smart Meters Matrix (Grid format like Attendance/Conveyance)
+router.get('/meters-monthly', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { year, month, supervisorId, employeeId, subdivision } = req.query;
+    const matrix = await getMonthlyMetersMatrix({
+      year: year ? parseInt(year, 10) : undefined,
+      month: month ? parseInt(month, 10) : undefined,
+      supervisorId,
+      employeeId,
+      subdivision
+    });
+    res.json(matrix);
+  } catch (err) {
+    console.error('Error fetching monthly meters matrix:', err);
+    res.status(500).json({ error: 'Failed to fetch monthly meters matrix: ' + err.message });
+  }
+});
+
+// 4.3 Export Monthly Smart Meters Matrix as Excel (.xlsx)
+router.get('/meters-monthly/export/excel', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { year, month, supervisorId, employeeId, subdivision } = req.query;
+    const matrix = await getMonthlyMetersMatrix({
+      year: year ? parseInt(year, 10) : undefined,
+      month: month ? parseInt(month, 10) : undefined,
+      supervisorId,
+      employeeId,
+      subdivision
+    });
+    const buffer = generateMonthlyMetersExcel(matrix);
+    const filename = `Meters_${matrix.monthName}_${matrix.year}.xlsx`;
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
+  } catch (err) {
+    console.error('Error exporting monthly meters excel:', err);
+    res.status(500).json({ error: 'Failed to export meters excel: ' + err.message });
+  }
+});
+
+// 4.4 Admin update meter count for a specific session
 router.put('/:id/meter-count', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;

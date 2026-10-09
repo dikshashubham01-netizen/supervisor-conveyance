@@ -162,6 +162,12 @@ export const api = {
     getReport: (params = {}) => {
       return request(`/duty/meters-report${toQueryString(params)}`);
     },
+    getMonthlyMatrix: (params = {}) => {
+      return request(`/duty/meters-monthly${toQueryString(params)}`);
+    },
+    getMonthlyExcelUrl: (params = {}) => {
+      return `${API_BASE}/duty/meters-monthly/export/excel${toQueryString(params)}`;
+    },
     updateCount: (sessionId, metersInstalled) => {
       return request(`/duty/${sessionId}/meter-count`, {
         method: 'PUT',

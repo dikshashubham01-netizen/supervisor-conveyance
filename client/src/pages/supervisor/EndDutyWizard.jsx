@@ -50,6 +50,17 @@ export function EndDutyWizard({ activeDuty, onDutyEnded, onCancel }) {
       return;
     }
 
+    if (metersInstalled === '' || metersInstalled === null || isNaN(metersInstalled) || parseInt(metersInstalled, 10) < 0) {
+      setError("Today's installed meter count is strictly mandatory to end duty.");
+      setCurrentStep(1);
+      return;
+    }
+
+    if (!odoData || odoData.manualKm === null || odoData.manualKm === undefined || isNaN(odoData.manualKm) || odoData.manualKm < 0) {
+      setError('Manual bike odometer KM reading is strictly mandatory to end duty.');
+      return;
+    }
+
     try {
       setSubmitting(true);
       setError(null);

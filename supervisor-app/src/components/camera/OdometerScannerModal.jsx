@@ -127,6 +127,11 @@ export function OdometerScannerModal({ isOpen, onClose, onConfirm, title = 'Bike
   };
 
   const handleFinalConfirm = () => {
+    if (!manualKm || isNaN(parseFloat(manualKm)) || parseFloat(manualKm) < 0) {
+      alert('Manual bike odometer KM reading is strictly mandatory. Please enter your bike KM reading.');
+      return;
+    }
+
     const finalVal = parseFloat(selectedFinalKm || manualKm || detectedKm);
     if (isNaN(finalVal) || finalVal < 0) {
       alert('Please confirm a valid numerical KM reading.');
@@ -137,7 +142,7 @@ export function OdometerScannerModal({ isOpen, onClose, onConfirm, title = 'Bike
       image: capturedImage,
       detectedKm: detectedKm != null ? Number(detectedKm) : null,
       ocrConfidence: ocrConfidence || 0,
-      manualKm: manualKm ? parseFloat(manualKm) : null,
+      manualKm: parseFloat(manualKm),
       finalKm: finalVal
     });
     onClose();
@@ -245,13 +250,19 @@ export function OdometerScannerModal({ isOpen, onClose, onConfirm, title = 'Bike
 
             {/* Manual Input */}
             <div className="bg-slate-850 p-3.5 rounded-xl border border-slate-800 flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-slate-400 uppercase flex items-center gap-1">
-                <Edit3 className="w-3.5 h-3.5 text-blue-400" /> Enter KM Manually
+              <label className="text-xs font-semibold text-slate-400 uppercase flex items-center justify-between">
+                <span className="flex items-center gap-1">
+                  <Edit3 className="w-3.5 h-3.5 text-blue-400" /> Enter KM Manually
+                </span>
+                <span className="text-[10px] text-rose-400 font-bold tracking-normal bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/30">
+                  * Mandatory
+                </span>
               </label>
               <div className="flex items-center gap-2">
                 <input
                   type="number"
                   step="any"
+                  required
                   placeholder="e.g. 12458"
                   value={manualKm}
                   onChange={(e) => {
@@ -320,7 +331,7 @@ export function OdometerScannerModal({ isOpen, onClose, onConfirm, title = 'Bike
               <button
                 type="button"
                 onClick={handleFinalConfirm}
-                disabled={!selectedFinalKm}
+                disabled={!manualKm || !selectedFinalKm}
                 className="py-3 px-3 rounded-xl bg-emerald-600 text-white text-xs font-bold shadow-lg shadow-emerald-950 disabled:opacity-40"
               >
                 Confirm KM

@@ -702,3 +702,180 @@ export async function getSupervisorMonthlyAttendanceAndConveyance({ supervisorId
   };
 }
 
+/**
+ * 8. Monthly Day-wise Smart Meter Installations Matrix
+ * Grid: Supervisors x Days of Month (01-Oct ... 31-Oct)
+ */
+export async function getMonthlyMetersMatrix({ year, month, supervisorId, employeeId, subdivision }) {
+  await autoEndLingeringDutySessions();
+
+  const numYear = Number(year) || new Date().getFullYear();
+  const numMonth = Number(month) || (new Date().getMonth() + 1);
+  const daysInMonth = getDaysInMonth(numYear, numMonth);
+
+  // Day columns metadata (01-Oct, 02-Oct ...)
+  const dayColumns = [];
+  for (let d = 1; d <= daysInMonth; d++) {
+    const paddedDay = String(d).padStart(2, '0');
+    const paddedMonth = String(numMonth).padStart(2, '0');
+    const dateStr = `${numYear}-${paddedMonth}-${paddedDay}`;
+    const header = formatDayHeader(d, numMonth);
+    dayColumns.push({ dayNumber: d, dateStr, header });
+  }
+
+  // Query supervisors
+  let supQuery = `SELECT id, employee_id, name, phone, subdivision, status FROM users WHERE role = 'supervisor'`;
+  const supParams = [];
+  let p = 1;
+
+  if (supervisorId) {
+    supQuery += ` AND id = $${p++}`;
+    supParams.push(supervisorId);
+  }
+  if (employeeId) {
+    supQuery += ` AND employee_id ILIKE $${p++}`;
+    supParams.push(`%${employeeId.trim()}%`);
+  }
+  if (subdivision) {
+    supQuery += ` AND LOWER(subdivision) = LOWER($${p++})`;
+    supParams.push(subdivision.trim());
+  }
+  supQuery += ` ORDER BY employee_id ASC`;
+  const supervisors = await db.queryAll(supQuery, supParams);
+
+  // Fetch all completed / active sessions for the month
+  const dutySessions = await db.queryAll(
+    `SELECT id, supervisor_id, (start_time AT TIME ZONE 'Asia/Kolkata')::date::text AS duty_date,
+            status, approved_distance_km, COALESCE(meters_installed, 0) AS meters_installed
+     FROM duty_sessions
+     WHERE EXTRACT(YEAR FROM (start_time AT TIME ZONE 'Asia/Kolkata')) = $1
+       AND EXTRACT(MONTH FROM (start_time AT TIME ZONE 'Asia/Kolkata')) = $2`,
+    [numYear, numMonth]
+  );
+
+  // Map duty sessions by supervisor and date: sum meters
+  const metersMap = new Map(); // `${supervisor_id}_${dateStr}` -> totalMeters
+  for (const ds of dutySessions) {
+    const count = Number(ds.meters_installed) || 0;
+    const key = `${ds.supervisor_id}_${ds.duty_date}`;
+    metersMap.set(key, (metersMap.get(key) || 0) + count);
+  }
+
+  let grandTotalMeters = 0;
+  const dayTotals = {};
+  for (const col of dayColumns) {
+    dayTotals[col.header] = 0;
+  }
+
+  const rows = supervisors.map((sup) => {
+    const dailyMeters = {};
+    let employeeTotalMeters = 0;
+    let employeeActiveDays = 0;
+
+    for (const col of dayColumns) {
+      const key = `${sup.id}_${col.dateStr}`;
+      const hasDuty = metersMap.has(key);
+      const count = hasDuty ? metersMap.get(key) : null;
+
+      dailyMeters[col.header] = count;
+      if (count !== null) {
+        employeeTotalMeters += count;
+        dayTotals[col.header] += count;
+        if (count > 0) employeeActiveDays++;
+      }
+    }
+
+    grandTotalMeters += employeeTotalMeters;
+
+    return {
+      supervisorId: sup.id,
+      name: sup.name,
+      employeeId: sup.employee_id,
+      subdivision: sup.subdivision || '',
+      dailyMeters,
+      totalMeters: employeeTotalMeters,
+      activeInstallationDays: employeeActiveDays
+    };
+  });
+
+  const totalEmployees = supervisors.length;
+  const avgMetersPerEmployee = totalEmployees > 0
+    ? Number((grandTotalMeters / totalEmployees).toFixed(1))
+    : 0.0;
+
+  return {
+    year: numYear,
+    month: numMonth,
+    monthName: MONTH_NAMES[numMonth - 1],
+    dayColumns,
+    rows,
+    dayTotals,
+    summary: {
+      totalEmployees,
+      grandTotalMeters,
+      averageMetersPerEmployee: avgMetersPerEmployee
+    }
+  };
+}
+
+/**
+ * 9. Monthly Smart Meters Excel Export (.xlsx buffer)
+ * Layout:
+ * Installation Field Engg Name | Employee ID | Sub-Division | 01-Oct | 02-Oct ... | Total Meters Installed
+ */
+export function generateMonthlyMetersExcel(matrixData) {
+  const { rows, dayColumns, monthName, year, dayTotals, summary } = matrixData;
+
+  const excelRows = rows.map((r) => {
+    const rowObj = {
+      'Installation Field Engg Name': r.name,
+      'Employee ID': r.employeeId,
+      'Sub-Division': r.subdivision || '-'
+    };
+
+    for (const col of dayColumns) {
+      const val = r.dailyMeters[col.header];
+      rowObj[col.header] = val !== null && val !== undefined ? val : '-';
+    }
+
+    rowObj['Total Meters Installed'] = r.totalMeters;
+    return rowObj;
+  });
+
+  // Bottom Total Row
+  const totalsRow = {
+    'Installation Field Engg Name': 'DAILY TOTAL METERS',
+    'Employee ID': '',
+    'Sub-Division': ''
+  };
+  for (const col of dayColumns) {
+    totalsRow[col.header] = dayTotals ? (dayTotals[col.header] || 0) : 0;
+  }
+  totalsRow['Total Meters Installed'] = summary.grandTotalMeters || 0;
+  excelRows.push(totalsRow);
+
+  const worksheet = XLSX.utils.json_to_sheet(excelRows);
+
+  // Freeze top header row and left 3 identification columns
+  worksheet['!freeze'] = { xSplit: 3, ySplit: 1 };
+
+  // Set column widths
+  const colWidths = [
+    { wch: 28 }, // Installation Field Engg Name
+    { wch: 14 }, // Employee ID
+    { wch: 18 }  // Sub-Division
+  ];
+  for (let i = 0; i < dayColumns.length; i++) {
+    colWidths.push({ wch: 8 }); // 01-Oct ...
+  }
+  colWidths.push({ wch: 24 }); // Total Meters Installed
+  worksheet['!cols'] = colWidths;
+
+  const workbook = XLSX.utils.book_new();
+  const sheetName = `Meters_${monthName}_${year}`.slice(0, 31);
+  XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+
+  return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+}
+
+

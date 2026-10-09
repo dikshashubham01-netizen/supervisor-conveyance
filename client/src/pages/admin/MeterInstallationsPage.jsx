@@ -18,8 +18,26 @@ import {
   Check,
   X,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  FileSpreadsheet
 } from 'lucide-react';
+
+const MONTH_OPTIONS = [
+  { value: 1, label: 'January' },
+  { value: 2, label: 'February' },
+  { value: 3, label: 'March' },
+  { value: 4, label: 'April' },
+  { value: 5, label: 'May' },
+  { value: 6, label: 'June' },
+  { value: 7, label: 'July' },
+  { value: 8, label: 'August' },
+  { value: 9, label: 'September' },
+  { value: 10, label: 'October' },
+  { value: 11, label: 'November' },
+  { value: 12, label: 'December' }
+];
+
+const YEAR_OPTIONS = [2025, 2026, 2027];
 
 export function MeterInstallationsPage() {
   const [loading, setLoading] = useState(true);
@@ -35,8 +53,17 @@ export function MeterInstallationsPage() {
     sessions: []
   });
 
-  // Active view: 'DAY_WISE' | 'SUPERVISOR_WISE' | 'SESSIONS'
-  const [viewTab, setViewTab] = useState('DAY_WISE');
+  const now = new Date();
+
+  // Active view: 'MONTHLY_MATRIX' | 'DAY_WISE' | 'SUPERVISOR_WISE' | 'SESSIONS'
+  const [viewTab, setViewTab] = useState('MONTHLY_MATRIX');
+
+  // Monthly Matrix State
+  const [matrixYear, setMatrixYear] = useState(now.getFullYear());
+  const [matrixMonth, setMatrixMonth] = useState(now.getMonth() + 1);
+  const [matrixData, setMatrixData] = useState(null);
+  const [matrixLoading, setMatrixLoading] = useState(false);
+  const [matrixDownloading, setMatrixDownloading] = useState(false);
 
   // Filters
   const [datePreset, setDatePreset] = useState('ALL');
@@ -105,7 +132,61 @@ export function MeterInstallationsPage() {
     fetchReport(true);
   }, [startDate, endDate, selectedSubdivision]);
 
-  // Extract unique sub-divisions from data for dropdown
+  const fetchMonthlyMatrix = async (showSpinner = true) => {
+    try {
+      if (showSpinner) setMatrixLoading(true);
+      const res = await api.meters.getMonthlyMatrix({
+        year: matrixYear,
+        month: matrixMonth,
+        subdivision: selectedSubdivision || undefined,
+        employeeId: searchTerm || undefined
+      });
+      setMatrixData(res);
+    } catch (err) {
+      console.error('Failed to load monthly meters matrix:', err);
+    } finally {
+      if (showSpinner) setMatrixLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (viewTab === 'MONTHLY_MATRIX') {
+      fetchMonthlyMatrix(true);
+    }
+  }, [viewTab, matrixYear, matrixMonth, selectedSubdivision]);
+
+  const handleExportMatrixExcel = async () => {
+    try {
+      setMatrixDownloading(true);
+      const url = api.meters.getMonthlyExcelUrl({
+        year: matrixYear,
+        month: matrixMonth,
+        subdivision: selectedSubdivision || undefined,
+        employeeId: searchTerm || undefined
+      });
+      const token = localStorage.getItem('token');
+      const response = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!response.ok) throw new Error('Download failed');
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      const monthName = MONTH_OPTIONS.find((m) => m.value === Number(matrixMonth))?.label || 'Month';
+      a.download = `Meters_${monthName}_${matrixYear}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+    } catch (err) {
+      alert('Failed to export Excel: ' + (err.message || 'Error'));
+    } finally {
+      setMatrixDownloading(false);
+    }
+  };
+
+  // Extract unique sub-divisions from data and matrix for dropdown
   const subDivisions = React.useMemo(() => {
     const set = new Set();
     data.sessions.forEach((s) => {
@@ -114,8 +195,27 @@ export function MeterInstallationsPage() {
     data.supervisorSummary.forEach((s) => {
       if (s.subdivision) set.add(s.subdivision.trim());
     });
-    return Array.from(set).sort();
-  }, [data]);
+    if (matrixData?.rows) {
+      matrixData.rows.forEach((r) => {
+        if (r.subdivision) set.add(r.subdivision.trim());
+      });
+    }
+    ['Moran', 'Charaideo', 'Sivsagar-I&II', 'Demow', 'Amguri', 'Nazira'].forEach((s) => set.add(s));
+    return Array.from(set).filter(Boolean).sort();
+  }, [data, matrixData]);
+
+  // Filter matrix rows by search term
+  const filteredMatrixRows = React.useMemo(() => {
+    if (!matrixData?.rows) return [];
+    if (!searchTerm.trim()) return matrixData.rows;
+    const term = searchTerm.toLowerCase();
+    return matrixData.rows.filter(
+      (r) =>
+        r.name?.toLowerCase().includes(term) ||
+        r.employeeId?.toLowerCase().includes(term) ||
+        r.subdivision?.toLowerCase().includes(term)
+    );
+  }, [matrixData, searchTerm]);
 
   // Filter supervisor summary by search term
   const filteredSupervisorSummary = React.useMemo(() => {
@@ -274,96 +374,125 @@ export function MeterInstallationsPage() {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => fetchReport(true)}
-            disabled={loading}
+            onClick={() => {
+              if (viewTab === 'MONTHLY_MATRIX') fetchMonthlyMatrix(true);
+              else fetchReport(true);
+            }}
+            disabled={loading || matrixLoading}
             className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
             title="Refresh Data"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${(loading || matrixLoading) ? 'animate-spin' : ''}`} />
           </button>
-          <button
-            type="button"
-            onClick={exportToCsv}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition shadow-lg shadow-emerald-950"
-          >
-            <Download className="w-4 h-4" />
-            <span>Export CSV</span>
-          </button>
+          {viewTab === 'MONTHLY_MATRIX' ? (
+            <button
+              type="button"
+              onClick={handleExportMatrixExcel}
+              disabled={matrixDownloading || !matrixData?.rows?.length}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition shadow-lg shadow-emerald-950 disabled:opacity-50"
+            >
+              <Download className="w-4 h-4" />
+              <span>{matrixDownloading ? 'Exporting...' : 'Export Excel (.xlsx)'}</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={exportToCsv}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition shadow-lg shadow-emerald-950"
+            >
+              <Download className="w-4 h-4" />
+              <span>Export CSV</span>
+            </button>
+          )}
         </div>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Total Installed */}
-        <div className="bg-slate-850 rounded-2xl p-4 sm:p-5 border border-cyan-500/30 relative overflow-hidden shadow-lg">
-          <div className="absolute -right-4 -bottom-4 w-24 h-24 bg-cyan-500/5 rounded-full blur-xl pointer-events-none" />
-          <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">Total Installed</span>
-            <div className="p-2 rounded-lg bg-cyan-500/10 text-cyan-400">
-              <Zap className="w-4 h-4" />
+      {/* KPI Cards (for Day-Wise / Supervisor-Wise / Sessions views) */}
+      {viewTab !== 'MONTHLY_MATRIX' && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Total Installed */}
+          <div className="bg-slate-850 rounded-2xl p-4 sm:p-5 border border-cyan-500/30 relative overflow-hidden shadow-lg">
+            <div className="absolute -right-4 -bottom-4 w-24 h-24 bg-cyan-500/5 rounded-full blur-xl pointer-events-none" />
+            <div className="flex items-center justify-between text-slate-400 mb-2">
+              <span className="text-xs font-semibold uppercase tracking-wider">Total Installed</span>
+              <div className="p-2 rounded-lg bg-cyan-500/10 text-cyan-400">
+                <Zap className="w-4 h-4" />
+              </div>
             </div>
+            <div className="text-2xl sm:text-3xl font-black text-cyan-300 font-mono">
+              {data.summary.totalMetersInstalled?.toLocaleString() || 0}
+            </div>
+            <span className="text-[11px] text-slate-400 mt-1 block">In selected period</span>
           </div>
-          <div className="text-2xl sm:text-3xl font-black text-cyan-300 font-mono">
-            {data.summary.totalMetersInstalled?.toLocaleString() || 0}
-          </div>
-          <span className="text-[11px] text-slate-400 mt-1 block">In selected period</span>
-        </div>
 
-        {/* Today's Count */}
-        <div className="bg-slate-850 rounded-2xl p-4 sm:p-5 border border-slate-800 relative overflow-hidden shadow-lg">
-          <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">Today's Installed</span>
-            <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400">
-              <Calendar className="w-4 h-4" />
+          {/* Today's Count */}
+          <div className="bg-slate-850 rounded-2xl p-4 sm:p-5 border border-slate-800 relative overflow-hidden shadow-lg">
+            <div className="flex items-center justify-between text-slate-400 mb-2">
+              <span className="text-xs font-semibold uppercase tracking-wider">Today's Installed</span>
+              <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400">
+                <Calendar className="w-4 h-4" />
+              </div>
             </div>
+            <div className="text-2xl sm:text-3xl font-black text-emerald-400 font-mono">
+              {todayCount.toLocaleString()}
+            </div>
+            <span className="text-[11px] text-slate-400 mt-1 block">Live today ({todayStr})</span>
           </div>
-          <div className="text-2xl sm:text-3xl font-black text-emerald-400 font-mono">
-            {todayCount.toLocaleString()}
-          </div>
-          <span className="text-[11px] text-slate-400 mt-1 block">Live today ({todayStr})</span>
-        </div>
 
-        {/* Active Supervisors */}
-        <div className="bg-slate-850 rounded-2xl p-4 sm:p-5 border border-slate-800 relative overflow-hidden shadow-lg">
-          <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">Active Installers</span>
-            <div className="p-2 rounded-lg bg-blue-500/10 text-blue-400">
-              <Users className="w-4 h-4" />
+          {/* Active Supervisors */}
+          <div className="bg-slate-850 rounded-2xl p-4 sm:p-5 border border-slate-800 relative overflow-hidden shadow-lg">
+            <div className="flex items-center justify-between text-slate-400 mb-2">
+              <span className="text-xs font-semibold uppercase tracking-wider">Active Installers</span>
+              <div className="p-2 rounded-lg bg-blue-500/10 text-blue-400">
+                <Users className="w-4 h-4" />
+              </div>
             </div>
+            <div className="text-2xl sm:text-3xl font-black text-blue-400 font-mono">
+              {data.summary.activeSupervisorsCount || 0}
+            </div>
+            <span className="text-[11px] text-slate-400 mt-1 block">Supervisors deployed</span>
           </div>
-          <div className="text-2xl sm:text-3xl font-black text-blue-400 font-mono">
-            {data.summary.activeSupervisorsCount || 0}
-          </div>
-          <span className="text-[11px] text-slate-400 mt-1 block">Supervisors deployed</span>
-        </div>
 
-        {/* Top Installer */}
-        <div className="bg-slate-850 rounded-2xl p-4 sm:p-5 border border-slate-800 relative overflow-hidden shadow-lg">
-          <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">Top Installer</span>
-            <div className="p-2 rounded-lg bg-amber-500/10 text-amber-400">
-              <Award className="w-4 h-4" />
+          {/* Top Installer */}
+          <div className="bg-slate-850 rounded-2xl p-4 sm:p-5 border border-slate-800 relative overflow-hidden shadow-lg">
+            <div className="flex items-center justify-between text-slate-400 mb-2">
+              <span className="text-xs font-semibold uppercase tracking-wider">Top Installer</span>
+              <div className="p-2 rounded-lg bg-amber-500/10 text-amber-400">
+                <Award className="w-4 h-4" />
+              </div>
             </div>
+            <div className="text-lg font-bold text-white truncate">
+              {topInstaller ? topInstaller.supervisor_name : '---'}
+            </div>
+            <span className="text-[11px] text-amber-400 font-mono font-bold mt-1 block">
+              {topInstaller ? `${topInstaller.total_meters} meters installed` : 'No data yet'}
+            </span>
           </div>
-          <div className="text-lg font-bold text-white truncate">
-            {topInstaller ? topInstaller.supervisor_name : '---'}
-          </div>
-          <span className="text-[11px] text-amber-400 font-mono font-bold mt-1 block">
-            {topInstaller ? `${topInstaller.total_meters} meters installed` : 'No data yet'}
-          </span>
         </div>
-      </div>
+      )}
 
       {/* Filter and Tab Bar */}
       <div className="bg-slate-850 rounded-2xl p-4 border border-slate-800 flex flex-col gap-4">
         {/* Top row: Tab Switcher & Search */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           {/* View Tab Buttons */}
-          <div className="flex items-center gap-1.5 p-1 bg-slate-900 rounded-xl border border-slate-800 self-start md:self-auto">
+          <div className="flex items-center gap-1.5 p-1 bg-slate-900 rounded-xl border border-slate-800 self-start md:self-auto overflow-x-auto max-w-full">
+            <button
+              type="button"
+              onClick={() => setViewTab('MONTHLY_MATRIX')}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition ${
+                viewTab === 'MONTHLY_MATRIX'
+                  ? 'bg-cyan-600 text-white shadow'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>Monthly Matrix (Excel Grid)</span>
+            </button>
             <button
               type="button"
               onClick={() => setViewTab('DAY_WISE')}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition ${
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition ${
                 viewTab === 'DAY_WISE'
                   ? 'bg-cyan-600 text-white shadow'
                   : 'text-slate-400 hover:text-white'
@@ -375,19 +504,19 @@ export function MeterInstallationsPage() {
             <button
               type="button"
               onClick={() => setViewTab('SUPERVISOR_WISE')}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition ${
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition ${
                 viewTab === 'SUPERVISOR_WISE'
                   ? 'bg-cyan-600 text-white shadow'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
               <Users className="w-3.5 h-3.5" />
-              <span>Supervisor-Wise Leaderboard</span>
+              <span>Supervisor Leaderboard</span>
             </button>
             <button
               type="button"
               onClick={() => setViewTab('SESSIONS')}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition ${
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition ${
                 viewTab === 'SESSIONS'
                   ? 'bg-cyan-600 text-white shadow'
                   : 'text-slate-400 hover:text-white'
@@ -416,52 +545,39 @@ export function MeterInstallationsPage() {
           </div>
         </div>
 
-        {/* Bottom row: Preset dates, Custom dates, Sub-division */}
-        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800 text-xs">
-          <div className="flex items-center gap-1">
-            <span className="text-slate-400 mr-1 flex items-center gap-1">
-              <Filter className="w-3.5 h-3.5" /> Presets:
-            </span>
-            {['ALL', 'TODAY', 'YESTERDAY', 'WEEK', 'MONTH'].map((p) => (
-              <button
-                key={p}
-                type="button"
-                onClick={() => handlePresetChange(p)}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition ${
-                  datePreset === p
-                    ? 'bg-slate-700 text-white border border-slate-600'
-                    : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
-                }`}
+        {/* Bottom row: Conditional filters based on viewTab */}
+        {viewTab === 'MONTHLY_MATRIX' ? (
+          <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-slate-800 text-xs">
+            {/* Year Selector */}
+            <div className="flex items-center gap-1.5 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800 text-slate-300">
+              <span className="text-slate-400 font-medium">Year:</span>
+              <select
+                value={matrixYear}
+                onChange={(e) => setMatrixYear(Number(e.target.value))}
+                className="bg-transparent text-white font-semibold focus:outline-none cursor-pointer"
               >
-                {p === 'ALL' ? 'All Time' : p === 'TODAY' ? 'Today' : p === 'YESTERDAY' ? 'Yesterday' : p === 'WEEK' ? 'Last 7 Days' : 'This Month'}
-              </button>
-            ))}
-          </div>
-
-          <div className="flex items-center gap-2 ml-auto">
-            <div className="flex items-center gap-1.5 bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-800 text-slate-300">
-              <span className="text-[10px] text-slate-400">From</span>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => {
-                  setStartDate(e.target.value);
-                  setDatePreset('CUSTOM');
-                }}
-                className="bg-transparent text-xs text-white focus:outline-none"
-              />
+                {YEAR_OPTIONS.map((y) => (
+                  <option key={y} value={y} className="bg-slate-900 text-white">
+                    {y}
+                  </option>
+                ))}
+              </select>
             </div>
-            <div className="flex items-center gap-1.5 bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-800 text-slate-300">
-              <span className="text-[10px] text-slate-400">To</span>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => {
-                  setEndDate(e.target.value);
-                  setDatePreset('CUSTOM');
-                }}
-                className="bg-transparent text-xs text-white focus:outline-none"
-              />
+
+            {/* Month Selector */}
+            <div className="flex items-center gap-1.5 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800 text-slate-300">
+              <span className="text-slate-400 font-medium">Month:</span>
+              <select
+                value={matrixMonth}
+                onChange={(e) => setMatrixMonth(Number(e.target.value))}
+                className="bg-transparent text-white font-semibold focus:outline-none cursor-pointer"
+              >
+                {MONTH_OPTIONS.map((m) => (
+                  <option key={m.value} value={m.value} className="bg-slate-900 text-white">
+                    {m.label}
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* Sub-Division Dropdown */}
@@ -469,21 +585,283 @@ export function MeterInstallationsPage() {
               <select
                 value={selectedSubdivision}
                 onChange={(e) => setSelectedSubdivision(e.target.value)}
-                className="bg-slate-900 text-slate-200 text-xs px-2.5 py-1.5 rounded-lg border border-slate-800 focus:outline-none focus:border-cyan-500"
+                className="bg-slate-900 text-slate-200 text-xs px-3 py-1.5 rounded-lg border border-slate-800 focus:outline-none focus:border-cyan-500 cursor-pointer"
               >
                 <option value="">All Sub-Divisions</option>
                 {subDivisions.map((sub) => (
-                  <option key={sub} value={sub}>
+                  <option key={sub} value={sub} className="bg-slate-900 text-white">
                     {sub}
                   </option>
                 ))}
               </select>
             )}
+
+            <button
+              type="button"
+              onClick={() => fetchMonthlyMatrix(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition font-medium cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${matrixLoading ? 'animate-spin' : ''}`} />
+              <span>Update Grid</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleExportMatrixExcel}
+              disabled={matrixDownloading || !matrixData?.rows?.length}
+              className="ml-auto flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition shadow disabled:opacity-50 cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>{matrixDownloading ? 'Exporting...' : 'Export Excel (.xlsx)'}</span>
+            </button>
           </div>
-        </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800 text-xs">
+            <div className="flex items-center gap-1">
+              <span className="text-slate-400 mr-1 flex items-center gap-1">
+                <Filter className="w-3.5 h-3.5" /> Presets:
+              </span>
+              {['ALL', 'TODAY', 'YESTERDAY', 'WEEK', 'MONTH'].map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => handlePresetChange(p)}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition ${
+                    datePreset === p
+                      ? 'bg-slate-700 text-white border border-slate-600'
+                      : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
+                  }`}
+                >
+                  {p === 'ALL' ? 'All Time' : p === 'TODAY' ? 'Today' : p === 'YESTERDAY' ? 'Yesterday' : p === 'WEEK' ? 'Last 7 Days' : 'This Month'}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-2 ml-auto">
+              <div className="flex items-center gap-1.5 bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-800 text-slate-300">
+                <span className="text-[10px] text-slate-400">From</span>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => {
+                    setStartDate(e.target.value);
+                    setDatePreset('CUSTOM');
+                  }}
+                  className="bg-transparent text-xs text-white focus:outline-none"
+                />
+              </div>
+              <div className="flex items-center gap-1.5 bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-800 text-slate-300">
+                <span className="text-[10px] text-slate-400">To</span>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => {
+                    setEndDate(e.target.value);
+                    setDatePreset('CUSTOM');
+                  }}
+                  className="bg-transparent text-xs text-white focus:outline-none"
+                />
+              </div>
+
+              {/* Sub-Division Dropdown */}
+              {subDivisions.length > 0 && (
+                <select
+                  value={selectedSubdivision}
+                  onChange={(e) => setSelectedSubdivision(e.target.value)}
+                  className="bg-slate-900 text-slate-200 text-xs px-2.5 py-1.5 rounded-lg border border-slate-800 focus:outline-none focus:border-cyan-500 cursor-pointer"
+                >
+                  <option value="">All Sub-Divisions</option>
+                  {subDivisions.map((sub) => (
+                    <option key={sub} value={sub} className="bg-slate-900 text-white">
+                      {sub}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Main Content Areas based on selected tab */}
+
+      {/* ─── 0. MONTHLY MATRIX VIEW (EXCEL GRID) ──────────────────────────────── */}
+      {viewTab === 'MONTHLY_MATRIX' && (
+        <div className="flex flex-col gap-6">
+          {/* Monthly KPI Overview Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-slate-850 rounded-2xl p-4 sm:p-5 border border-cyan-500/30 relative overflow-hidden shadow-lg">
+              <div className="absolute -right-4 -bottom-4 w-24 h-24 bg-cyan-500/5 rounded-full blur-xl pointer-events-none" />
+              <div className="flex items-center justify-between text-slate-400 mb-2">
+                <span className="text-xs font-semibold uppercase tracking-wider">Grand Total Installed</span>
+                <div className="p-2 rounded-lg bg-cyan-500/10 text-cyan-400">
+                  <Zap className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="text-2xl sm:text-3xl font-black text-cyan-300 font-mono">
+                {matrixData?.summary?.grandTotalMeters?.toLocaleString() || 0}
+              </div>
+              <span className="text-[11px] text-slate-400 mt-1 block">
+                Total for {matrixData?.monthName || 'Month'} {matrixData?.year || matrixYear}
+              </span>
+            </div>
+
+            <div className="bg-slate-850 rounded-2xl p-4 sm:p-5 border border-slate-800 relative overflow-hidden shadow-lg">
+              <div className="flex items-center justify-between text-slate-400 mb-2">
+                <span className="text-xs font-semibold uppercase tracking-wider">Field Supervisors</span>
+                <div className="p-2 rounded-lg bg-blue-500/10 text-blue-400">
+                  <Users className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="text-2xl sm:text-3xl font-black text-blue-400 font-mono">
+                {matrixData?.summary?.totalEmployees || 0}
+              </div>
+              <span className="text-[11px] text-slate-400 mt-1 block">Field engineers in matrix</span>
+            </div>
+
+            <div className="bg-slate-850 rounded-2xl p-4 sm:p-5 border border-slate-800 relative overflow-hidden shadow-lg">
+              <div className="flex items-center justify-between text-slate-400 mb-2">
+                <span className="text-xs font-semibold uppercase tracking-wider">Avg Meters / Supervisor</span>
+                <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400">
+                  <TrendingUp className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="text-2xl sm:text-3xl font-black text-emerald-400 font-mono">
+                {matrixData?.summary?.averageMetersPerEmployee || 0}
+              </div>
+              <span className="text-[11px] text-slate-400 mt-1 block">Average installations/supervisor</span>
+            </div>
+          </div>
+
+          {/* Excel Grid Matrix Table */}
+          <div className="bg-slate-850 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
+            <div className="overflow-x-auto max-h-[650px] overflow-y-auto">
+              <table className="w-full text-left border-collapse text-[11px] whitespace-nowrap">
+                <thead className="sticky top-0 z-20 bg-slate-900 border-b border-slate-800 shadow-sm">
+                  <tr className="text-slate-400 uppercase tracking-wider font-semibold">
+                    <th className="py-3 px-3.5 sticky left-0 z-30 bg-slate-900 min-w-[190px] border-r border-slate-800">
+                      Installation Field Engg Name
+                    </th>
+                    <th className="py-3 px-3 text-center bg-slate-900 min-w-[95px] border-r border-slate-800">
+                      Employee ID
+                    </th>
+                    <th className="py-3 px-3 text-center bg-slate-900 min-w-[110px] border-r border-slate-800">
+                      Sub-Division
+                    </th>
+                    {(matrixData?.dayColumns || []).map((col) => (
+                      <th
+                        key={col.dayNumber}
+                        className="py-3 px-2 text-center min-w-[42px] font-mono bg-slate-900 text-slate-300"
+                      >
+                        <div>{col.header.split('-')[0]}</div>
+                        <div className="text-[9px] text-slate-500 font-sans">{col.header.split('-')[1]}</div>
+                      </th>
+                    ))}
+                    <th className="py-3 px-3 text-center bg-slate-900 min-w-[120px] border-l border-slate-800 text-cyan-400 font-bold">
+                      Total Meters
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 font-mono">
+                  {matrixLoading ? (
+                    <tr>
+                      <td colSpan={4 + (matrixData?.dayColumns?.length || 31)} className="py-12 text-center text-slate-400 font-sans">
+                        <div className="inline-block w-6 h-6 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin mb-2" />
+                        <div>Loading monthly meters matrix...</div>
+                      </td>
+                    </tr>
+                  ) : filteredMatrixRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={4 + (matrixData?.dayColumns?.length || 31)} className="py-10 text-center text-slate-500 font-sans">
+                        No supervisor records found for the selected criteria.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredMatrixRows.map((row) => (
+                      <tr key={row.supervisorId} className="hover:bg-slate-800/40 transition">
+                        {/* Sticky Name */}
+                        <td className="py-2.5 px-3.5 font-sans font-bold text-white sticky left-0 z-10 bg-slate-850 border-r border-slate-800 truncate max-w-[200px]">
+                          {row.name}
+                        </td>
+
+                        {/* Employee ID */}
+                        <td className="py-2.5 px-3 text-center text-slate-300 border-r border-slate-800 font-semibold">
+                          {row.employeeId}
+                        </td>
+
+                        {/* Sub-Division */}
+                        <td className="py-2.5 px-3 text-center text-slate-400 border-r border-slate-800">
+                          {row.subdivision || '-'}
+                        </td>
+
+                        {/* Day Columns */}
+                        {(matrixData?.dayColumns || []).map((col) => {
+                          const count = row.dailyMeters[col.header];
+                          return (
+                            <td key={col.dayNumber} className="py-2 px-1 text-center">
+                              {count !== null && count !== undefined ? (
+                                count > 0 ? (
+                                  <span className="inline-block min-w-[28px] px-1.5 py-0.5 rounded font-mono font-bold text-[11px] bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+                                    {count}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-500 font-mono text-[10px]">0</span>
+                                )
+                              ) : (
+                                <span className="text-slate-700 font-mono">-</span>
+                              )}
+                            </td>
+                          );
+                        })}
+
+                        {/* Total Meters */}
+                        <td className="py-2.5 px-3 text-center font-bold text-cyan-300 bg-cyan-950/25 border-l border-slate-800">
+                          {row.totalMeters}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+                {/* Daily Total Summary Footer Row */}
+                {filteredMatrixRows.length > 0 && matrixData?.dayTotals && (
+                  <tfoot className="sticky bottom-0 z-20 bg-slate-900 border-t-2 border-cyan-500/40 font-mono font-bold">
+                    <tr>
+                      <td className="py-3 px-3.5 sticky left-0 z-30 bg-slate-900 border-r border-slate-800 text-cyan-400 font-sans tracking-wide">
+                        DAILY TOTAL METERS
+                      </td>
+                      <td className="py-3 px-3 text-center border-r border-slate-800 text-slate-500">—</td>
+                      <td className="py-3 px-3 text-center border-r border-slate-800 text-slate-500">—</td>
+                      {(matrixData?.dayColumns || []).map((col) => {
+                        const daySum = matrixData.dayTotals[col.header] || 0;
+                        return (
+                          <td key={col.dayNumber} className="py-3 px-1 text-center">
+                            <span className={daySum > 0 ? 'text-cyan-300 font-bold' : 'text-slate-600'}>
+                              {daySum}
+                            </span>
+                          </td>
+                        );
+                      })}
+                      <td className="py-3 px-3 text-center text-cyan-300 bg-cyan-950/50 border-l border-slate-800 text-sm">
+                        {matrixData.summary?.grandTotalMeters || 0}
+                      </td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+
+            {/* Matrix Table Footer note */}
+            <div className="p-3 bg-slate-900/90 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
+              <div className="flex items-center gap-2">
+                <span>Note: Cell numbers display smart meter installations entered by supervisors upon completing duty.</span>
+              </div>
+              <div className="text-[11px] text-slate-500 font-mono">
+                {matrixData?.monthName} {matrixData?.year} • {filteredMatrixRows.length} Field Enggs Listed
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ─── 1. DAY-WISE BREAKDOWN VIEW ─────────────────────────────────────── */}
       {viewTab === 'DAY_WISE' && (
