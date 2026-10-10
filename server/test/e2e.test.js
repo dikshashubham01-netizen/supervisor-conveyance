@@ -13,10 +13,14 @@ test('E2E Lifecycle: Auth -> Start Duty -> GPS Tracking -> End Duty -> Admin Ver
   const { default: express } = await import('express');
   const { config } = await import('../src/config/index.js');
   const { initDatabase, db } = await import('../src/db/database.js');
-  const { seed } = await import('../src/db/seed.js');
+  const { ensureAdminAndCleanState } = await import('../src/db/seed.js');
 
-  // Reset database with clean seed
-  await seed();
+  // Ensure admin and test supervisor exist without wiping other supervisors
+  await ensureAdminAndCleanState();
+  const emp001 = await db.queryOne(`SELECT id FROM users WHERE employee_id = 'EMP001'`);
+  if (emp001) {
+    await db.run('DELETE FROM duty_sessions WHERE supervisor_id = $1', [emp001.id]);
+  }
 
   // Dynamically import app routes
   const authRoutes = (await import('../src/routes/authRoutes.js')).default;
