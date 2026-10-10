@@ -66,39 +66,10 @@ export async function ensureAdminAndCleanState() {
   console.log(`✅ Admin: ${adminEmail} — ALL data preserved in Supabase.\n`);
 }
 
-// ─── seed() — Manual reset only ──────────────────────────────────────────────
+// ─── seed() — Preserves all data safely ───────────────────────────────────────
 export async function seed() {
-  console.log('⚠️  MANUAL SEED RESET — Wiping all data...');
-
-  const passwordAdmin = await bcrypt.hash('Soumya@123', 10);
-  const passwordSupervisor = await bcrypt.hash('Soumya@123', 10);
-
-  await db.run('DELETE FROM audit_logs');
-  await db.run('DELETE FROM location_points');
-  await db.run('DELETE FROM duty_sessions');
-  await db.run('DELETE FROM conveyance_rates');
-  await db.run('DELETE FROM users');
-
-  await db.run(
-    `INSERT INTO conveyance_rates (id, vehicle_type, rate_per_km, effective_from, active) VALUES ($1, 'Bike', 4.50, NOW(), 1)`,
-    [uuidv4()]
-  );
-
-  await db.run(
-    `INSERT INTO users (id, employee_id, name, phone, password_hash, role, status) VALUES ($1, 'soumya.ghosh@genus.in', 'Soumya Ghosh', '9876543210', $2, 'admin', 'active')`,
-    [uuidv4(), passwordAdmin]
-  );
-
-  await db.run(
-    `INSERT INTO users (id, employee_id, name, phone, password_hash, role, status) VALUES ($1, 'EMP001', 'Shubham', '9216013070', $2, 'supervisor', 'active')`,
-    [uuidv4(), passwordSupervisor]
-  );
-
-  await db.run('DELETE FROM duty_sessions');
-  await db.run('DELETE FROM location_points');
-  await db.run('DELETE FROM audit_logs');
-
-  console.log('✅ Database seeded. Admin: soumya.ghosh@genus.in / Soumya@123');
+  console.log('🛡️ Preserving all existing users, duty sessions, and telemetry. Never wipe data.');
+  await ensureAdminAndCleanState();
 }
 
 if (process.argv[1]?.endsWith('seed.js')) {
