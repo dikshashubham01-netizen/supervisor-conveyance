@@ -345,7 +345,7 @@ router.get('/routes/:sessionId', authenticateToken, async (req, res) => {
 
     res.json({
       session,
-      points,
+      points: cleaned.cleanedPoints,
       validPoints: cleaned.validPoints,
       segments: cleaned.segments,
       gaps: cleaned.gaps,

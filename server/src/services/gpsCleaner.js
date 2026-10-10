@@ -48,6 +48,7 @@ export function cleanGpsPoints(points, maxGapMeters = config.gps?.maxGapMeters |
   let mockCount = 0;
 
   let lastValidPoint = null;
+  let stationaryAnchor = null;
   const now = Date.now();
   const maxClockSkewMs = 2 * 60 * 1000; // 2 minutes future clock tolerance
 
@@ -97,50 +98,83 @@ export function cleanGpsPoints(points, maxGapMeters = config.gps?.maxGapMeters |
       continue;
     }
 
-    if (lastValidPoint) {
-      const lastLat = Number(lastValidPoint.latitude);
-      const lastLng = Number(lastValidPoint.longitude);
-      const lastTime = new Date(lastValidPoint.recorded_at).getTime();
-      const distKm = calculateDistanceKm(lastLat, lastLng, lat, lng);
-      const distMeters = distKm * 1000;
-      const timeDiffSeconds = Math.max(0.1, (time - lastTime) / 1000);
-      const speedKmh = (distKm / (timeDiffSeconds / 3600));
+    if (!lastValidPoint) {
+      pt.is_filtered = 0;
+      pt.filter_reason = null;
+      cleanedPoints.push(pt);
+      validPoints.push(pt);
+      currentSegment.push([lat, lng]);
+      lastValidPoint = pt;
+      stationaryAnchor = pt;
+      continue;
+    }
 
-      // Check 5: Micro stationary jitter
-      if (distMeters < (config.gps?.minDistanceMeters || 3) && timeDiffSeconds < 60) {
-        pt.is_filtered = 1;
-        pt.filter_reason = 'STATIONARY_JITTER';
-        cleanedPoints.push(pt);
-        filteredCount++;
-        continue;
-      }
+    const lastLat = Number(lastValidPoint.latitude);
+    const lastLng = Number(lastValidPoint.longitude);
+    const lastTime = new Date(lastValidPoint.recorded_at).getTime();
+    const distKm = calculateDistanceKm(lastLat, lastLng, lat, lng);
+    const distMeters = distKm * 1000;
+    const timeDiffSeconds = Math.max(0.1, (time - lastTime) / 1000);
+    const calculatedSpeedKmh = (distKm / (timeDiffSeconds / 3600));
 
-      // Check 6: Speed jump / Teleportation rejection (> 100 km/h)
-      if (speedKmh > (config.gps?.maxSpeedKmh || 100)) {
-        pt.is_filtered = 1;
-        pt.filter_reason = 'GPS_JUMP_REJECTED';
-        cleanedPoints.push(pt);
-        filteredCount++;
-        jumpCount++;
-        continue;
-      }
+    const reportedSpeed = pt.speed != null ? Number(pt.speed) : null;
+    const reportedSpeedKmh = reportedSpeed != null ? reportedSpeed * 3.6 : null;
 
-      // Check 7: GPS Signal Gap (breaks polyline, excludes straight line)
-      const isGap = timeDiffSeconds > (maxGapMinutes * 60) || distMeters > maxGapMeters;
-      if (isGap) {
-        if (currentSegment.length > 0) {
-          segments.push(currentSegment);
-          currentSegment = [];
-        }
-        gaps.push({
-          from: lastValidPoint,
-          to: pt,
-          gapMinutes: Math.round(timeDiffSeconds / 60),
-          distanceKm: Number(distKm.toFixed(2))
-        });
-      } else {
-        totalDistanceKm += distKm;
+    const anchorLat = Number(stationaryAnchor.latitude);
+    const anchorLng = Number(stationaryAnchor.longitude);
+    const distFromAnchorMeters = calculateDistanceKm(anchorLat, anchorLng, lat, lng) * 1000;
+
+    // Check 5: Indoor Wi-Fi / Cell Tower Jump while stationary
+    // Phone speed is near zero (< 2.5 km/h), but position jumped > 30m away from previous point or anchor
+    if ((reportedSpeedKmh !== null && reportedSpeedKmh < 2.5) && (distMeters > 30 || distFromAnchorMeters > 40)) {
+      pt.is_filtered = 1;
+      pt.filter_reason = 'STATIONARY_TOWER_JUMP';
+      cleanedPoints.push(pt);
+      filteredCount++;
+      continue;
+    }
+
+    // Check 6: Teleportation Jump / Unrealistic Speed (> 100 km/h)
+    if (calculatedSpeedKmh > (config.gps?.maxSpeedKmh || 100)) {
+      pt.is_filtered = 1;
+      pt.filter_reason = 'GPS_JUMP_REJECTED';
+      cleanedPoints.push(pt);
+      filteredCount++;
+      jumpCount++;
+      continue;
+    }
+
+    // Check 7: Stationary Anchor & Jitter Deadband
+    // If the device has not moved significantly beyond the stationary anchor radius (< 35m),
+    // OR if reported speed from GPS receiver confirms stationary (< 2.5 km/h),
+    // OR if step distance is tiny (< 20m) with slow calculated speed (< 4.0 km/h):
+    const isStationaryByAnchor = distFromAnchorMeters < 35;
+    const isStationaryBySpeed = reportedSpeedKmh !== null && reportedSpeedKmh < 2.5;
+    const isStationaryByStep = distMeters < 20 && calculatedSpeedKmh < 4.0;
+
+    if (isStationaryByAnchor || isStationaryBySpeed || isStationaryByStep) {
+      pt.is_filtered = 1;
+      pt.filter_reason = 'STATIONARY_JITTER';
+      cleanedPoints.push(pt);
+      filteredCount++;
+      continue;
+    }
+
+    // Check 8: GPS Signal Gap (breaks polyline, excludes straight line)
+    const isGap = timeDiffSeconds > (maxGapMinutes * 60) || distMeters > maxGapMeters;
+    if (isGap) {
+      if (currentSegment.length > 0) {
+        segments.push(currentSegment);
+        currentSegment = [];
       }
+      gaps.push({
+        from: lastValidPoint,
+        to: pt,
+        gapMinutes: Math.round(timeDiffSeconds / 60),
+        distanceKm: Number(distKm.toFixed(2))
+      });
+    } else {
+      totalDistanceKm += distKm;
     }
 
     pt.is_filtered = 0;
@@ -149,6 +183,7 @@ export function cleanGpsPoints(points, maxGapMeters = config.gps?.maxGapMeters |
     validPoints.push(pt);
     currentSegment.push([lat, lng]);
     lastValidPoint = pt;
+    stationaryAnchor = pt;
   }
 
   // Push last remaining segment
@@ -216,6 +251,20 @@ export function cleanPointOnIngestion(pt, lastValidPoint = null) {
 
     if (distKm > 0.1 && speedKmh > (config.gps?.maxSpeedKmh || 100)) {
       return { ...pt, is_filtered: 1, filter_reason: 'GPS_JUMP_REJECTED', accuracy_rating: accuracyRating };
+    }
+
+    const distMeters = distKm * 1000;
+    const reportedSpeed = pt.speed != null ? Number(pt.speed) : null;
+    const reportedSpeedKmh = reportedSpeed != null ? reportedSpeed * 3.6 : null;
+
+    // Indoor tower jump while stationary
+    if (reportedSpeedKmh !== null && reportedSpeedKmh < 2.5 && distMeters > 30) {
+      return { ...pt, is_filtered: 1, filter_reason: 'STATIONARY_TOWER_JUMP', accuracy_rating: accuracyRating };
+    }
+
+    // Micro stationary jitter
+    if (distMeters < 25 && (reportedSpeedKmh !== null && reportedSpeedKmh < 2.5)) {
+      return { ...pt, is_filtered: 1, filter_reason: 'STATIONARY_JITTER', accuracy_rating: accuracyRating };
     }
   }
 

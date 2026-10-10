@@ -147,8 +147,13 @@ export function useGeolocation(isTrackingActive = false, dutySessionId = null) {
                 return;
               }
 
-              // Movement throttling: record if moved >= 5 meters OR >= 15 seconds elapsed
-              if (dist >= 5 || elapsedSec >= 15) {
+              // Movement throttling: ignore stationary jitter / drift (< 25m or speed < 0.8 m/s)
+              // Only record if moved >= 25 meters, or moved >= 10 meters with genuine bike speed >= 1.0 m/s (3.6 km/h)
+              const isMoving = coords.speed != null && coords.speed >= 1.0;
+              if (dist >= 25 || (dist >= 10 && isMoving)) {
+                shouldRecord = true;
+              } else if (elapsedSec >= 300) {
+                // Heartbeat point every 5 minutes while stationary (keeps session alive without accumulating distance)
                 shouldRecord = true;
               }
             }

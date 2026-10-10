@@ -231,8 +231,15 @@ public class LocationTrackingService extends Service implements LocationListener
         } else {
             float dist = lastRecordedLocation.distanceTo(location);
             long elapsedSeconds = (now - lastRecordedTime) / 1000;
-            // Record if moved >= 5 meters or 15 seconds passed
-            if (dist >= 5.0f || elapsedSeconds >= 15) {
+            float speed = location.hasSpeed() ? location.getSpeed() : 0.0f;
+            boolean isMoving = speed >= 1.0f; // >= 3.6 km/h
+
+            // Filter out stationary jitter / phantom drift (< 25m while sitting still)
+            // Only record if moved >= 25m, or moved >= 10m with genuine movement speed (>= 1.0 m/s)
+            if (dist >= 25.0f || (dist >= 10.0f && isMoving)) {
+                shouldRecord = true;
+            } else if (elapsedSeconds >= 300) {
+                // Heartbeat point every 5 minutes while stationary (keeps live status without generating jitter)
                 shouldRecord = true;
             }
         }
