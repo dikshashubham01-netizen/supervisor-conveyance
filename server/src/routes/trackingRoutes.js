@@ -343,6 +343,11 @@ router.get('/routes/:sessionId', authenticateToken, async (req, res) => {
     // Compute route segments and signal gaps
     const cleaned = cleanGpsPoints(points);
 
+    if (session.gps_distance_km !== cleaned.totalDistanceKm) {
+      await db.run(`UPDATE duty_sessions SET gps_distance_km = $1, updated_at = NOW() WHERE id = $2`, [cleaned.totalDistanceKm, sessionId]);
+      session.gps_distance_km = cleaned.totalDistanceKm;
+    }
+
     res.json({
       session,
       points: cleaned.cleanedPoints,
