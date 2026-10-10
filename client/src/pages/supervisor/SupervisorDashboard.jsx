@@ -318,7 +318,7 @@ export function SupervisorDashboard() {
             </div>
             <div className="flex items-center gap-2 text-slate-400">
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-              <span>Capture bike odometer dial (auto OCR + manual confirm)</span>
+              <span>Capture bike odometer photo & enter current KM reading</span>
             </div>
             <div className="flex items-center gap-2 text-slate-400">
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />

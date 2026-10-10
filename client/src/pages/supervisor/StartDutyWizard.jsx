@@ -165,7 +165,7 @@ export function StartDutyWizard({ onDutyStarted, onCancel }) {
           <div>
             <h3 className="text-lg font-bold text-white">Step 2 — Bike Odometer Photo</h3>
             <p className="text-xs text-slate-400 mt-1 max-w-sm">
-              Capture your bike's odometer dial. The OCR engine will auto-detect the KM reading for your confirmation.
+              Capture your bike's odometer dial and enter the manual KM reading for confirmation.
             </p>
           </div>
 
