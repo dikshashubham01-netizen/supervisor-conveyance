@@ -337,7 +337,10 @@ router.post(
 // 4. Duty history
 router.get('/history', authenticateToken, async (req, res) => {
   try {
-    const { supervisorId, status, startDate, endDate, page = 1, limit = 50 } = req.query;
+    const isAdmin = req.user.role === 'admin';
+    // Admins get up to 500 rows by default so all sessions are visible
+    const defaultLimit = isAdmin ? 500 : 50;
+    const { supervisorId, status, startDate, endDate, page = 1, limit = defaultLimit } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
     let query = `
@@ -376,7 +379,19 @@ router.get('/history', authenticateToken, async (req, res) => {
     params.push(parseInt(limit), offset);
 
     const sessions = await db.queryAll(query, params);
-    res.json({ sessions });
+
+    // Also return total count so frontend can show pagination info
+    let countQuery = `SELECT COUNT(*) AS total FROM duty_sessions ds JOIN users u ON u.id = ds.supervisor_id WHERE 1=1`;
+    const countParams = params.slice(0, params.length - 2); // remove limit/offset
+    if (countParams.length > 0) {
+      // Re-build count query conditions from main query
+      const conditionPart = query.split('WHERE 1=1')[1].split('ORDER BY')[0];
+      countQuery = `SELECT COUNT(*) AS total FROM duty_sessions ds JOIN users u ON u.id = ds.supervisor_id WHERE 1=1${conditionPart}`;
+    }
+    const countResult = await db.queryOne(countQuery, countParams);
+    const total = parseInt(countResult?.total || 0);
+
+    res.json({ sessions, total, page: parseInt(page), limit: parseInt(limit) });
   } catch (err) {
     console.error('Duty history error:', err);
     res.status(500).json({ error: 'Failed to fetch duty history' });

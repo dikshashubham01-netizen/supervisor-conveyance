@@ -21,6 +21,9 @@ import {
 
 export function DutySessionsPage() {
   const [sessions, setSessions] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_LIMIT = 100;
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
@@ -34,13 +37,17 @@ export function DutySessionsPage() {
   const [adminEndNotes, setAdminEndNotes] = useState('');
   const [adminEndSubmitting, setAdminEndSubmitting] = useState(false);
 
-  const fetchSessions = async (showSpinner = true) => {
+  const fetchSessions = async (showSpinner = true, page = currentPage) => {
     try {
       if (showSpinner) setLoading(true);
       const res = await api.duty.getHistory({
-        status: statusFilter || undefined
+        status: statusFilter || undefined,
+        page,
+        limit: PAGE_LIMIT
       });
       setSessions(res.sessions || []);
+      setTotal(res.total || 0);
+      setCurrentPage(page);
       setLastUpdated(new Date());
     } catch (err) {
       console.error('Failed to load sessions:', err);
@@ -102,11 +109,12 @@ export function DutySessionsPage() {
   };
 
   useEffect(() => {
-    fetchSessions(true);
+    // Reset to page 1 when status filter changes
+    fetchSessions(true, 1);
 
     // Auto-refresh every 8 seconds so new duty sessions appear live
     const timer = setInterval(() => {
-      fetchSessions(false);
+      fetchSessions(false, currentPage);
     }, 8000);
 
     return () => clearInterval(timer);
@@ -134,6 +142,11 @@ export function DutySessionsPage() {
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
             Review attendance selfies, bike odometer readings, GPS routes, and approve conveyance
+            {total > 0 && (
+              <span className="ml-2 text-white font-semibold">
+                — {total} total session{total !== 1 ? 's' : ''}
+              </span>
+            )}
           </p>
         </div>
 
@@ -143,7 +156,7 @@ export function DutySessionsPage() {
           </span>
           <button
             type="button"
-            onClick={() => fetchSessions(true)}
+            onClick={() => fetchSessions(true, currentPage)}
             className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 border border-slate-700 transition"
             title="Refresh Now"
           >
@@ -151,6 +164,7 @@ export function DutySessionsPage() {
           </button>
         </div>
       </div>
+
 
       {/* Filter Tabs & Search */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
@@ -358,6 +372,47 @@ export function DutySessionsPage() {
           </table>
         </div>
       </div>
+
+      {/* Pagination */}
+      {total > PAGE_LIMIT && (
+        <div className="flex items-center justify-between px-2">
+          <span className="text-xs text-slate-400 font-mono">
+            Showing {(currentPage - 1) * PAGE_LIMIT + 1}–{Math.min(currentPage * PAGE_LIMIT, total)} of <span className="text-white font-bold">{total}</span> sessions
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={currentPage <= 1}
+              onClick={() => fetchSessions(true, currentPage - 1)}
+              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition"
+            >
+              ← Previous
+            </button>
+            {Array.from({ length: Math.ceil(total / PAGE_LIMIT) }, (_, i) => i + 1).map(pg => (
+              <button
+                key={pg}
+                type="button"
+                onClick={() => fetchSessions(true, pg)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  pg === currentPage
+                    ? 'bg-brand-600 text-white border border-brand-500 shadow'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
+                }`}
+              >
+                {pg}
+              </button>
+            ))}
+            <button
+              type="button"
+              disabled={currentPage >= Math.ceil(total / PAGE_LIMIT)}
+              onClick={() => fetchSessions(true, currentPage + 1)}
+              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition"
+            >
+              Next →
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Admin End Duty Modal with Meter Count */}
       {adminEndSession && (
