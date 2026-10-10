@@ -34,18 +34,7 @@ export async function ensureAdminAndCleanState() {
   // 2. Remove legacy 'admin' username
   await db.run(`DELETE FROM users WHERE employee_id = 'admin'`);
 
-  // 3. Ensure EMP001 (Shubham) exists
-  const existingEmp001 = await db.queryOne(`SELECT id FROM users WHERE employee_id = 'EMP001'`);
-  if (!existingEmp001) {
-    const supervisorPassHash = await bcrypt.hash('Soumya@123', 10);
-    await db.run(
-      `INSERT INTO users (id, employee_id, name, phone, password_hash, role, status) VALUES ($1, 'EMP001', 'Shubham', '9216013070', $2, 'supervisor', 'active')`,
-      [uuidv4(), supervisorPassHash]
-    );
-    console.log('✅ Supervisor EMP001 (Shubham) created.');
-  }
-
-  // 4. Ensure default conveyance rate
+  // 3. Ensure default conveyance rate
   const rateCount = await db.queryOne('SELECT COUNT(*) as count FROM conveyance_rates');
   if (parseInt(rateCount?.count || 0) === 0) {
     await db.run(

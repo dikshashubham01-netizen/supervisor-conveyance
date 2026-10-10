@@ -3,6 +3,7 @@ import confetti from 'canvas-confetti';
 import { NativeCameraModal } from '../components/camera/NativeCameraModal';
 import { OdometerScannerModal } from '../components/camera/OdometerScannerModal';
 import { useGeolocation } from '../hooks/useGeolocation';
+import { useOfflineQueue } from '../context/OfflineQueueContext';
 import { api } from '../api/client';
 import { formatCurrency, formatDistance, formatTime } from '../utils/formatters';
 import { Camera, Gauge, CheckCircle2, AlertTriangle, ArrowRight, Check, Zap } from 'lucide-react';
@@ -22,6 +23,7 @@ export function EndDutyWizard({ activeDuty, onDutyEnded, onCancel }) {
   const [error, setError] = useState(null);
 
   const { getCurrentPositionAsync } = useGeolocation(false);
+  const { triggerSync } = useOfflineQueue();
 
   const handleSelfieCaptured = (data) => {
     setSelfieData(data);
@@ -47,6 +49,13 @@ export function EndDutyWizard({ activeDuty, onDutyEnded, onCancel }) {
       if (!odoData || odoData.manualKm === null || odoData.manualKm === undefined || isNaN(odoData.manualKm) || odoData.manualKm < 0) {
         setError('Manual bike odometer KM reading is strictly mandatory to end duty.');
         return;
+      }
+
+      // Flush all offline locations to server before ending duty
+      try {
+        await triggerSync();
+      } catch (syncErr) {
+        console.warn('Pre-end sync attempt warning:', syncErr);
       }
 
       const pos = await getCurrentPositionAsync();

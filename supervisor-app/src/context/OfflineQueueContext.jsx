@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../api/client';
 import {
   savePendingLocation,
@@ -13,6 +13,7 @@ export function OfflineQueueProvider({ children }) {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [pendingCount, setPendingCount] = useState(0);
   const [isSyncing, setIsSyncing] = useState(false);
+  const syncingRef = useRef(false);
 
   const refreshPendingCount = useCallback(async () => {
     const count = await getPendingCount();
@@ -20,40 +21,42 @@ export function OfflineQueueProvider({ children }) {
   }, []);
 
   const triggerSync = useCallback(async () => {
-    if (isSyncing) return;
+    if (syncingRef.current) return;
+    syncingRef.current = true;
+    setIsSyncing(true);
 
     try {
-      const pending = await getPendingLocations();
-      if (!pending || pending.length === 0) {
-        setPendingCount(0);
-        return;
-      }
+      while (true) {
+        const pending = await getPendingLocations();
+        if (!pending || pending.length === 0) {
+          setPendingCount(0);
+          break;
+        }
 
-      setIsSyncing(true);
-      const batch = pending.slice(0, 50);
-      await api.tracking.sync(batch);
+        const batch = pending.slice(0, 50);
+        await api.tracking.sync(batch);
 
-      // Successfully contacted server -> we are online!
-      setIsOnline(true);
+        // Successfully contacted server -> we are online!
+        setIsOnline(true);
 
-      const syncedUuids = batch.map((p) => p.clientUuid);
-      await clearSyncedLocations(syncedUuids);
+        const syncedUuids = batch.map((p) => p.clientUuid);
+        await clearSyncedLocations(syncedUuids);
 
-      const remaining = await getPendingCount();
-      setPendingCount(remaining);
+        const remaining = await getPendingCount();
+        setPendingCount(remaining);
 
-      if (remaining > 0) {
-        setTimeout(triggerSync, 300);
+        if (remaining === 0) break;
       }
     } catch (err) {
       console.warn('Sync attempt failed (offline or network error):', err.message);
-      if (!navigator.onLine || err.message?.includes('fetch') || err.message?.includes('network')) {
+      if (!navigator.onLine || err.message?.includes('fetch') || err.message?.includes('network') || err.message?.includes('Failed to fetch')) {
         setIsOnline(false);
       }
     } finally {
+      syncingRef.current = false;
       setIsSyncing(false);
     }
-  }, [isSyncing]);
+  }, []);
 
   const queueLocation = useCallback(
     async (point) => {

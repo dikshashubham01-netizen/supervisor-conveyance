@@ -27,17 +27,41 @@ router.post('/sync', authenticateToken, requireSupervisor, async (req, res) => {
       return res.status(400).json({ error: 'Array of location points required' });
     }
 
-    const activeSession = await db.queryOne(
-      `SELECT id, conveyance_rate FROM duty_sessions WHERE supervisor_id = $1 AND status = 'ON_DUTY'`,
-      [supervisorId]
-    );
+    // 1. Resolve relevant duty session (active ON_DUTY, or specified session id, or most recent session)
+    let targetSession = null;
+    const specifiedSessionId = points[0]?.dutySessionId;
+    if (specifiedSessionId) {
+      targetSession = await db.queryOne(
+        `SELECT id, status, conveyance_rate FROM duty_sessions WHERE id = $1 AND supervisor_id = $2`,
+        [specifiedSessionId, supervisorId]
+      );
+    }
 
-    if (!activeSession) {
+    if (!targetSession) {
+      targetSession = await db.queryOne(
+        `SELECT id, status, conveyance_rate FROM duty_sessions WHERE supervisor_id = $1 AND status = 'ON_DUTY'`,
+        [supervisorId]
+      );
+    }
+
+    // If still not found, check recently ended session (absorbs late offline sync points recorded during duty)
+    if (!targetSession) {
+      targetSession = await db.queryOne(
+        `SELECT id, status, conveyance_rate FROM duty_sessions 
+         WHERE supervisor_id = $1 
+         ORDER BY end_time DESC NULLS LAST, updated_at DESC LIMIT 1`,
+        [supervisorId]
+      );
+    }
+
+    if (!targetSession) {
       return res.status(403).json({
-        error: 'Tracking forbidden: No active duty session. Location is ONLY recorded during duty.',
+        error: 'Tracking forbidden: No active or recent duty session. Location is ONLY recorded during duty.',
         stopTracking: true
       });
     }
+
+    const activeSession = targetSession;
 
     let insertedCount = 0;
     let hasMock = false;

@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../api/client';
-import { formatCurrency, formatDistance } from '../../utils/formatters';
 import { Modal } from '../../components/common/Modal';
 import {
   Users,
@@ -250,9 +249,6 @@ export function SupervisorsPage() {
                 <th className="py-3.5 px-4">Sub-Division</th>
                 <th className="py-3.5 px-4">Phone</th>
                 <th className="py-3.5 px-4">Duty Status</th>
-                <th className="py-3.5 px-4">Total Duties</th>
-                <th className="py-3.5 px-4">Total Approved KM</th>
-                <th className="py-3.5 px-4">Total Conveyance</th>
                 <th className="py-3.5 px-4">Account Status</th>
                 <th className="py-3.5 px-4 text-right">Actions</th>
               </tr>
@@ -260,7 +256,7 @@ export function SupervisorsPage() {
             <tbody className="divide-y divide-slate-800/60">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-8 text-center text-slate-500">
+                  <td colSpan={6} className="py-8 text-center text-slate-500">
                     No supervisors found matching search criteria.
                   </td>
                 </tr>
@@ -294,15 +290,6 @@ export function SupervisorsPage() {
                           OFF DUTY
                         </span>
                       )}
-                    </td>
-                    <td className="py-3 px-4 font-mono text-slate-200">
-                      {s.total_approved_duties || 0}
-                    </td>
-                    <td className="py-3 px-4 font-mono font-bold text-white">
-                      {formatDistance(s.total_approved_km)}
-                    </td>
-                    <td className="py-3 px-4 font-mono font-bold text-emerald-400">
-                      {formatCurrency(s.total_conveyance)}
                     </td>
                     <td className="py-3 px-4">
                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
