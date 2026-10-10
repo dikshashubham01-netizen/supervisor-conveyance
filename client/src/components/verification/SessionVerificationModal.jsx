@@ -14,7 +14,11 @@ import {
   Gauge,
   History,
   Info,
-  ShieldAlert
+  ShieldAlert,
+  Trash2,
+  PowerOff,
+  Zap,
+  Check
 } from 'lucide-react';
 
 function SafeImage({ src, alt, className, emptyText = 'No photo' }) {
@@ -56,6 +60,14 @@ function SessionVerificationModalInner({ isOpen, onClose, sessionId, onActionCom
   const [showAllGpsJumps, setShowAllGpsJumps] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  // Meter count and admin end states
+  const [isEditingMeters, setIsEditingMeters] = useState(false);
+  const [meterCountInput, setMeterCountInput] = useState('0');
+  const [isAdminEnding, setIsAdminEnding] = useState(false);
+  const [adminEndMeters, setAdminEndMeters] = useState('0');
+  const [adminEndKm, setAdminEndKm] = useState('');
+  const [adminEndNotes, setAdminEndNotes] = useState('');
+
   const loadData = async () => {
     if (!sessionId) return;
     setLoading(true);
@@ -68,7 +80,16 @@ function SessionVerificationModalInner({ isOpen, onClose, sessionId, onActionCom
 
       if (detailResult.status === 'fulfilled' && detailResult.value?.session) {
         setDetails(detailResult.value);
-        setOverrideKm(detailResult.value.session.approved_distance_km ?? '');
+        const s = detailResult.value.session;
+        setOverrideKm(s.approved_distance_km ?? '');
+        const m = s.meters_installed != null ? String(s.meters_installed) : '0';
+        setMeterCountInput(m);
+        setAdminEndMeters(m);
+        const estEndKm = s.start_odometer_final != null && s.gps_distance_km != null
+          ? (Number(s.start_odometer_final) + Number(s.gps_distance_km)).toFixed(1)
+          : (s.start_odometer_final ? String(s.start_odometer_final) : '');
+        setAdminEndKm(String(estEndKm));
+        setAdminEndNotes('Ended by Admin with verified meter count');
       } else {
         const errMessage =
           detailResult.reason?.message ||
@@ -134,6 +155,66 @@ function SessionVerificationModalInner({ isOpen, onClose, sessionId, onActionCom
       onClose();
     } catch (err) {
       alert('Verification action failed: ' + err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSaveMeterCount = async () => {
+    const val = parseInt(meterCountInput, 10);
+    if (isNaN(val) || val < 0) {
+      alert('Valid installed meter count is required (must be >= 0).');
+      return;
+    }
+    try {
+      setSubmitting(true);
+      await api.meters.updateCount(sessionId, val);
+      setIsEditingMeters(false);
+      await loadData();
+      if (onActionComplete) onActionComplete();
+    } catch (err) {
+      alert('Failed to update meter count: ' + err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDeleteSession = async () => {
+    const conf = window.confirm(
+      `Are you sure you want to permanently delete this rejected session?\n\nThis will permanently remove the session record, all GPS telemetry points, and associated audit records.`
+    );
+    if (!conf) return;
+    try {
+      setSubmitting(true);
+      await api.duty.delete(sessionId);
+      if (onActionComplete) onActionComplete();
+      onClose();
+    } catch (err) {
+      alert('Failed to delete rejected session: ' + err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleAdminEndDuty = async (e) => {
+    e?.preventDefault();
+    const count = parseInt(adminEndMeters, 10);
+    if (isNaN(count) || count < 0) {
+      alert('Today installed meter count is mandatory (must be >= 0).');
+      return;
+    }
+    try {
+      setSubmitting(true);
+      await api.duty.adminEnd(sessionId, {
+        metersInstalled: count,
+        endKm: adminEndKm ? parseFloat(adminEndKm) : undefined,
+        notes: adminEndNotes || 'Ended by Admin with meter count'
+      });
+      setIsAdminEnding(false);
+      if (onActionComplete) onActionComplete();
+      onClose();
+    } catch (err) {
+      alert('Failed to end duty: ' + err.message);
     } finally {
       setSubmitting(false);
     }
@@ -378,7 +459,7 @@ function SessionVerificationModalInner({ isOpen, onClose, sessionId, onActionCom
               4. Calculation Breakdown
             </h5>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
               <div className="bg-slate-900 p-3 rounded-xl border border-slate-800">
                 <span className="text-xs text-slate-400 block">GPS Distance</span>
                 <span className="text-lg font-bold font-mono text-emerald-400">
@@ -402,6 +483,43 @@ function SessionVerificationModalInner({ isOpen, onClose, sessionId, onActionCom
                 <span className="text-lg font-bold font-mono text-emerald-300">
                   {formatCurrency(session.conveyance_amount)}
                 </span>
+              </div>
+              <div className="bg-slate-900 p-3 rounded-xl border border-cyan-500/30 flex flex-col justify-between">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-slate-400 block flex items-center gap-1">
+                    <Zap className="w-3.5 h-3.5 text-cyan-400" /> Meters
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingMeters(!isEditingMeters)}
+                    className="text-[10px] text-cyan-400 hover:underline font-bold"
+                  >
+                    {isEditingMeters ? 'Cancel' : 'Edit'}
+                  </button>
+                </div>
+                {isEditingMeters ? (
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <input
+                      type="number"
+                      min="0"
+                      value={meterCountInput}
+                      onChange={(e) => setMeterCountInput(e.target.value)}
+                      className="w-14 bg-slate-950 border border-cyan-500 rounded px-1.5 py-0.5 text-sm font-mono text-cyan-400 font-bold"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSaveMeterCount}
+                      disabled={submitting}
+                      className="px-2 py-0.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded text-xs font-bold"
+                    >
+                      Save
+                    </button>
+                  </div>
+                ) : (
+                  <span className="text-lg font-bold font-mono text-cyan-400">
+                    {session.meters_installed ?? 0}
+                  </span>
+                )}
               </div>
             </div>
 
@@ -557,45 +675,140 @@ function SessionVerificationModalInner({ isOpen, onClose, sessionId, onActionCom
                   Save Override & Approve
                 </button>
               </div>
-            ) : (
-              <div className="flex flex-wrap items-center justify-between gap-3">
+            ) : isAdminEnding ? (
+              <div className="flex flex-col gap-3 p-4 bg-slate-900 rounded-xl border border-amber-500/50">
+                <div className="flex items-center justify-between">
+                  <h6 className="text-sm font-bold text-amber-400 flex items-center gap-1.5">
+                    <PowerOff className="w-4 h-4" /> End Duty as Admin
+                  </h6>
+                  <button
+                    type="button"
+                    onClick={() => setIsAdminEnding(false)}
+                    className="text-xs text-slate-400 hover:text-white"
+                  >
+                    Cancel
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-slate-300 block mb-1 font-bold flex items-center gap-1 text-cyan-300">
+                      <Zap className="w-3.5 h-3.5 text-cyan-400" /> Today Installed Meters *
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      required
+                      value={adminEndMeters}
+                      onChange={(e) => setAdminEndMeters(e.target.value)}
+                      placeholder="e.g. 15"
+                      className="w-full bg-slate-950 border border-cyan-500/70 rounded-lg px-3 py-2 text-base font-mono font-bold text-cyan-400 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-300 block mb-1">Final End Odometer KM</label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={adminEndKm}
+                      onChange={(e) => setAdminEndKm(e.target.value)}
+                      placeholder="Auto-calculated from GPS if empty"
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs text-slate-300 block mb-1">Admin Remarks</label>
+                  <input
+                    type="text"
+                    value={adminEndNotes}
+                    onChange={(e) => setAdminEndNotes(e.target.value)}
+                    placeholder="Reason for ending duty..."
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none"
+                  />
+                </div>
+
                 <button
                   type="button"
-                  onClick={() => setIsOverriding(true)}
-                  className="flex items-center gap-1.5 py-2.5 px-4 rounded-xl border border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700 text-sm font-medium transition"
+                  onClick={handleAdminEndDuty}
+                  disabled={submitting || adminEndMeters === ''}
+                  className="py-2.5 px-4 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold transition flex items-center justify-center gap-1.5 shadow-lg shadow-amber-950 disabled:opacity-50"
                 >
-                  <FileEdit className="w-4 h-4 text-brand-400" />
-                  <span>Manual Override KM</span>
+                  <Check className="w-4 h-4" />
+                  <span>{submitting ? 'Ending Duty...' : 'Confirm & End Duty'}</span>
                 </button>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  {session?.status === 'ON_DUTY' ? (
+                    <button
+                      type="button"
+                      onClick={() => setIsAdminEnding(true)}
+                      className="flex items-center gap-1.5 py-2.5 px-4 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-sm font-bold shadow-lg shadow-amber-950 transition"
+                    >
+                      <PowerOff className="w-4 h-4" />
+                      <span>End Duty & Enter Meter Count</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setIsOverriding(true)}
+                      className="flex items-center gap-1.5 py-2.5 px-4 rounded-xl border border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700 text-sm font-medium transition"
+                    >
+                      <FileEdit className="w-4 h-4 text-brand-400" />
+                      <span>Manual Override KM</span>
+                    </button>
+                  )}
+
+                  {session?.status === 'REJECTED' && (
+                    <button
+                      type="button"
+                      onClick={handleDeleteSession}
+                      disabled={submitting}
+                      className="flex items-center gap-1.5 py-2.5 px-4 rounded-xl border border-rose-600 bg-rose-950/80 text-rose-300 hover:bg-rose-900 text-sm font-bold transition shadow-lg shadow-rose-950"
+                    >
+                      <Trash2 className="w-4 h-4 text-rose-400" />
+                      <span>Delete Rejected Session</span>
+                    </button>
+                  )}
+                </div>
 
                 <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleAction('REQUEST_REVIEW')}
-                    disabled={submitting}
-                    className="flex items-center gap-1.5 py-2.5 px-4 rounded-xl border border-amber-500/50 bg-amber-950/40 text-amber-300 hover:bg-amber-900/50 text-sm font-medium transition"
-                  >
-                    <AlertTriangle className="w-4 h-4" />
-                    <span>Request Review</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleAction('REJECT')}
-                    disabled={submitting}
-                    className="flex items-center gap-1.5 py-2.5 px-4 rounded-xl border border-rose-500/50 bg-rose-950/40 text-rose-300 hover:bg-rose-900/50 text-sm font-medium transition"
-                  >
-                    <XCircle className="w-4 h-4" />
-                    <span>Reject</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleAction('APPROVE')}
-                    disabled={submitting}
-                    className="flex items-center gap-1.5 py-2.5 px-5 rounded-xl bg-emerald-600 text-white hover:bg-emerald-500 font-semibold shadow-lg shadow-emerald-950 text-sm transition"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Approve Conveyance</span>
-                  </button>
+                  {session?.status !== 'ON_DUTY' && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleAction('REQUEST_REVIEW')}
+                        disabled={submitting}
+                        className="flex items-center gap-1.5 py-2.5 px-4 rounded-xl border border-amber-500/50 bg-amber-950/40 text-amber-300 hover:bg-amber-900/50 text-sm font-medium transition"
+                      >
+                        <AlertTriangle className="w-4 h-4" />
+                        <span>Request Review</span>
+                      </button>
+                      {session?.status !== 'REJECTED' && (
+                        <button
+                          type="button"
+                          onClick={() => handleAction('REJECT')}
+                          disabled={submitting}
+                          className="flex items-center gap-1.5 py-2.5 px-4 rounded-xl border border-rose-500/50 bg-rose-950/40 text-rose-300 hover:bg-rose-900/50 text-sm font-medium transition"
+                        >
+                          <XCircle className="w-4 h-4" />
+                          <span>Reject</span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleAction('APPROVE')}
+                        disabled={submitting}
+                        className="flex items-center gap-1.5 py-2.5 px-5 rounded-xl bg-emerald-600 text-white hover:bg-emerald-500 font-semibold shadow-lg shadow-emerald-950 text-sm transition"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>Approve Conveyance</span>
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             )}

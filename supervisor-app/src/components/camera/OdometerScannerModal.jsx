@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
-import { Camera as CameraIcon, Edit3, Check, RefreshCw, X, Upload } from 'lucide-react';
+import { Camera as CameraIcon, Edit3, Check, RefreshCw, X } from 'lucide-react';
 
 export function OdometerScannerModal({ isOpen, onClose, onConfirm, title = 'Bike Odometer Reading', initialKm = '' }) {
   const [capturedImage, setCapturedImage] = useState(null);
@@ -96,24 +96,14 @@ export function OdometerScannerModal({ isOpen, onClose, onConfirm, title = 'Bike
               <span>Capture Odometer Photo</span>
             </button>
 
-            <div className="flex items-center justify-center pt-2 border-t border-slate-800 text-xs text-slate-400">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                className="hidden"
-                onChange={handleFileUpload}
-              />
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="flex items-center gap-1.5 hover:text-slate-200 py-1 px-3 rounded-lg bg-slate-800 text-slate-300 font-medium"
-              >
-                <Upload className="w-3.5 h-3.5" />
-                <span>Upload From Gallery</span>
-              </button>
-            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={handleFileUpload}
+            />
           </div>
         ) : (
           /* Step 2: Verification — Manual KM Entry Only */

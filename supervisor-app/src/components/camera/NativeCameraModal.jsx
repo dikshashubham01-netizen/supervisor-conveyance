@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
-import { Camera as CameraIcon, RefreshCw, Check, X, Upload } from 'lucide-react';
+import { Camera as CameraIcon, RefreshCw, Check, X } from 'lucide-react';
 
 export function NativeCameraModal({ isOpen, onClose, onCapture, title = 'Take Photo' }) {
   const [capturedImage, setCapturedImage] = useState(null);
@@ -124,14 +124,6 @@ export function NativeCameraModal({ isOpen, onClose, onCapture, title = 'Take Ph
               className="hidden"
               onChange={handleFileUpload}
             />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="text-xs text-slate-400 hover:text-slate-200 text-center py-1 flex items-center justify-center gap-1"
-            >
-              <Upload className="w-3 h-3" />
-              <span>Choose photo from gallery or file</span>
-            </button>
           </div>
         )}
       </div>

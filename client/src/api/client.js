@@ -129,6 +129,15 @@ export const api = {
       request(`/duty/${id}/verify`, {
         method: 'POST',
         body: JSON.stringify(data)
+      }),
+    delete: (id) =>
+      request(`/duty/${id}`, {
+        method: 'DELETE'
+      }),
+    adminEnd: (id, data) =>
+      request(`/duty/${id}/admin-end`, {
+        method: 'POST',
+        body: JSON.stringify(data)
       })
   },
 

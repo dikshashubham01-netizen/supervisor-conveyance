@@ -135,12 +135,18 @@ router.post('/sync', authenticateToken, requireSupervisor, async (req, res) => {
       }
     }
 
-    // Only update the small subset of points that changed (typically 0-5 rows max)
+    // Only update the small subset of points that changed (in batch)
     if (pointsToUpdate.length > 0) {
-      for (const pt of pointsToUpdate) {
+      const groups = new Map();
+      for (const p of pointsToUpdate) {
+        const key = `${p.is_filtered}:::${p.filter_reason || ''}`;
+        if (!groups.has(key)) groups.set(key, { is_filtered: p.is_filtered, filter_reason: p.filter_reason, ids: [] });
+        groups.get(key).ids.push(p.id);
+      }
+      for (const group of groups.values()) {
         await db.run(
-          `UPDATE location_points SET is_filtered = $1, filter_reason = $2 WHERE id = $3`,
-          [pt.is_filtered, pt.filter_reason, pt.id]
+          `UPDATE location_points SET is_filtered = $1, filter_reason = $2 WHERE id = ANY($3::text[])`,
+          [group.is_filtered, group.filter_reason, group.ids]
         );
       }
     }

@@ -11,7 +11,12 @@ import {
   AlertTriangle,
   Calendar,
   CheckCircle2,
-  ChevronRight
+  ChevronRight,
+  Trash2,
+  PowerOff,
+  X,
+  Zap,
+  Check
 } from 'lucide-react';
 
 export function DutySessionsPage() {
@@ -21,6 +26,13 @@ export function DutySessionsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSessionId, setSelectedSessionId] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(new Date());
+
+  // Admin End Duty Dialog State
+  const [adminEndSession, setAdminEndSession] = useState(null);
+  const [adminEndMeters, setAdminEndMeters] = useState('0');
+  const [adminEndKm, setAdminEndKm] = useState('');
+  const [adminEndNotes, setAdminEndNotes] = useState('');
+  const [adminEndSubmitting, setAdminEndSubmitting] = useState(false);
 
   const fetchSessions = async (showSpinner = true) => {
     try {
@@ -34,6 +46,58 @@ export function DutySessionsPage() {
       console.error('Failed to load sessions:', err);
     } finally {
       if (showSpinner) setLoading(false);
+    }
+  };
+
+  const handleDeleteSession = async (e, session) => {
+    e.stopPropagation();
+    const conf = window.confirm(
+      `Are you sure you want to permanently delete this rejected session #${session.id.slice(0, 8)} for ${session.supervisor_name || 'Supervisor'}?\n\nThis will remove the session, all GPS location points, and telemetry permanently.`
+    );
+    if (!conf) return;
+
+    try {
+      await api.duty.delete(session.id);
+      fetchSessions(false);
+    } catch (err) {
+      alert('Failed to delete rejected session: ' + err.message);
+    }
+  };
+
+  const openAdminEndModal = (e, session) => {
+    e.stopPropagation();
+    setAdminEndSession(session);
+    setAdminEndMeters(session.meters_installed != null ? String(session.meters_installed) : '0');
+    const estEndKm = session.start_odometer_final != null && session.gps_distance_km != null
+      ? (Number(session.start_odometer_final) + Number(session.gps_distance_km)).toFixed(1)
+      : (session.start_odometer_final ? String(session.start_odometer_final) : '');
+    setAdminEndKm(String(estEndKm));
+    setAdminEndNotes('Ended by Admin with verified meter count');
+  };
+
+  const handleAdminEndSubmit = async (e) => {
+    e.preventDefault();
+    if (!adminEndSession) return;
+
+    const count = parseInt(adminEndMeters, 10);
+    if (isNaN(count) || count < 0) {
+      alert('Today installed meter count is mandatory (must be >= 0).');
+      return;
+    }
+
+    try {
+      setAdminEndSubmitting(true);
+      await api.duty.adminEnd(adminEndSession.id, {
+        metersInstalled: count,
+        endKm: adminEndKm ? parseFloat(adminEndKm) : undefined,
+        notes: adminEndNotes || 'Ended by Admin with meter count'
+      });
+      setAdminEndSession(null);
+      fetchSessions(false);
+    } catch (err) {
+      alert('Failed to end duty: ' + err.message);
+    } finally {
+      setAdminEndSubmitting(false);
     }
   };
 
@@ -147,6 +211,17 @@ export function DutySessionsPage() {
           >
             Currently On Duty
           </button>
+          <button
+            type="button"
+            onClick={() => setStatusFilter('REJECTED')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
+              statusFilter === 'REJECTED'
+                ? 'bg-rose-900/80 text-rose-300 border border-rose-600 shadow'
+                : 'text-slate-400 hover:text-rose-400'
+            }`}
+          >
+            ❌ Rejected
+          </button>
         </div>
 
         {/* Search Input */}
@@ -244,16 +319,37 @@ export function DutySessionsPage() {
                       </div>
                     </td>
                     <td className="py-3 px-4 text-right">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedSessionId(s.id);
-                        }}
-                        className="py-1 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
-                      >
-                        Inspect
-                      </button>
+                      <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                        {s.status === 'ON_DUTY' && (
+                          <button
+                            type="button"
+                            onClick={(e) => openAdminEndModal(e, s)}
+                            className="py-1 px-2.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-medium text-xs flex items-center gap-1 shadow transition"
+                            title="Admin End Duty & Enter Meter Count"
+                          >
+                            <PowerOff className="w-3.5 h-3.5" />
+                            <span>End Duty</span>
+                          </button>
+                        )}
+                        {s.status === 'REJECTED' && (
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteSession(e, s)}
+                            className="py-1 px-2.5 rounded-lg bg-rose-950/80 hover:bg-rose-900 border border-rose-600/60 text-rose-300 font-medium text-xs flex items-center gap-1 transition"
+                            title="Delete Rejected Session"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                            <span>Delete</span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setSelectedSessionId(s.id)}
+                          className="py-1 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
+                        >
+                          Inspect
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -262,6 +358,128 @@ export function DutySessionsPage() {
           </table>
         </div>
       </div>
+
+      {/* Admin End Duty Modal with Meter Count */}
+      {adminEndSession && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl flex flex-col gap-5">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                  <PowerOff className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Admin End Duty</h3>
+                  <p className="text-[11px] text-slate-400">
+                    {adminEndSession.supervisor_name} ({adminEndSession.employee_id})
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAdminEndSession(null)}
+                className="text-slate-400 hover:text-white p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAdminEndSubmit} className="flex flex-col gap-4">
+              <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <span className="text-slate-500 block text-[10px]">Start Time</span>
+                  <span className="text-white font-mono font-medium">{formatTime(adminEndSession.start_time)}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block text-[10px]">Start KM</span>
+                  <span className="text-white font-mono font-bold">{adminEndSession.start_odometer_final ?? '---'} KM</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block text-[10px]">GPS Tracked</span>
+                  <span className="text-emerald-400 font-mono font-bold">{formatDistance(adminEndSession.gps_distance_km)}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block text-[10px]">Current Status</span>
+                  <span className="text-amber-400 font-bold">ON DUTY</span>
+                </div>
+              </div>
+
+              {/* Meter Count Input (Mandatory) */}
+              <div className="bg-slate-950 p-4 rounded-2xl border border-cyan-500/30 flex flex-col gap-2">
+                <label className="text-xs font-bold text-white flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-cyan-300">
+                    <Zap className="w-4 h-4 text-cyan-400" /> Today Installed Meter Count
+                  </span>
+                  <span className="text-[10px] text-rose-400 font-bold bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/30">
+                    * Mandatory
+                  </span>
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  required
+                  autoFocus
+                  placeholder="Enter installed meters count (e.g. 15)"
+                  value={adminEndMeters}
+                  onChange={(e) => setAdminEndMeters(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xl font-mono font-bold text-cyan-400 focus:outline-none focus:border-cyan-500"
+                />
+                <p className="text-[11px] text-slate-400">
+                  This count will appear in the Monthly Meter Count matrix and daily reports.
+                </p>
+              </div>
+
+              {/* End KM (Optional/Editable) */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-slate-300">
+                  Final End Odometer KM (Optional)
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  placeholder="Estimated from GPS if blank"
+                  value={adminEndKm}
+                  onChange={(e) => setAdminEndKm(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-sm font-mono text-white focus:outline-none focus:border-brand-500"
+                />
+              </div>
+
+              {/* Remarks */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-slate-300">
+                  Admin Notes / Remarks
+                </label>
+                <input
+                  type="text"
+                  placeholder="Reason for ending duty..."
+                  value={adminEndNotes}
+                  onChange={(e) => setAdminEndNotes(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-brand-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setAdminEndSession(null)}
+                  className="py-3 px-4 rounded-xl border border-slate-700 bg-slate-800 text-slate-300 font-bold text-xs"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={adminEndSubmitting || adminEndMeters === ''}
+                  className="py-3 px-4 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-amber-950 disabled:opacity-50"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>{adminEndSubmitting ? 'Ending Duty...' : 'Confirm & End Duty'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Verification Modal */}
       {selectedSessionId && (

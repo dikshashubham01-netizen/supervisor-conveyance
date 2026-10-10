@@ -225,9 +225,35 @@ router.post(
 
       const { cleanedPoints, totalDistanceKm } = cleanGpsPoints(rawPoints);
 
-      // Update filtered flags
+      // Batch update only points whose is_filtered or filter_reason changed
+      const rawMap = new Map();
+      for (const r of rawPoints) {
+        rawMap.set(r.id, { is_filtered: Number(r.is_filtered) || 0, filter_reason: r.filter_reason || null });
+      }
+
+      const pointsToUpdate = [];
       for (const pt of cleanedPoints) {
-        await db.run('UPDATE location_points SET is_filtered = $1 WHERE id = $2', [pt.is_filtered, pt.id]);
+        const prev = rawMap.get(pt.id);
+        const newFiltered = pt.is_filtered ? 1 : 0;
+        const newReason = pt.filter_reason || null;
+        if (!prev || prev.is_filtered !== newFiltered || prev.filter_reason !== newReason) {
+          pointsToUpdate.push({ id: pt.id, is_filtered: newFiltered, filter_reason: newReason });
+        }
+      }
+
+      if (pointsToUpdate.length > 0) {
+        const groups = new Map();
+        for (const p of pointsToUpdate) {
+          const key = `${p.is_filtered}:::${p.filter_reason || ''}`;
+          if (!groups.has(key)) groups.set(key, { is_filtered: p.is_filtered, filter_reason: p.filter_reason, ids: [] });
+          groups.get(key).ids.push(p.id);
+        }
+        for (const group of groups.values()) {
+          await db.run(
+            `UPDATE location_points SET is_filtered = $1, filter_reason = $2 WHERE id = ANY($3::text[])`,
+            [group.is_filtered, group.filter_reason, group.ids]
+          );
+        }
       }
 
       let maxGapMinutes = 0;
@@ -611,6 +637,169 @@ router.post('/:id/verify', authenticateToken, requireAdmin, async (req, res) => 
   } catch (err) {
     console.error('Verify duty session error:', err);
     res.status(500).json({ error: 'Failed to verify duty session' });
+  }
+});
+
+// 7. Admin Delete Duty Session (delete rejected sessions or rejected data)
+router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const session = await db.queryOne('SELECT * FROM duty_sessions WHERE id = $1', [id]);
+    if (!session) {
+      return res.status(404).json({ error: 'Duty session not found' });
+    }
+
+    // Cascade delete points, logs, and duty session
+    await db.run('DELETE FROM location_points WHERE duty_session_id = $1', [id]);
+    await db.run('DELETE FROM audit_logs WHERE duty_session_id = $1', [id]);
+    await db.run('UPDATE attendance SET duty_session_id = NULL WHERE duty_session_id = $1', [id]);
+    await db.run('DELETE FROM duty_sessions WHERE id = $1', [id]);
+
+    await db.run(
+      `INSERT INTO audit_logs (id, user_id, action, old_value, reason, created_at)
+       VALUES ($1, $2, 'DELETE_DUTY_SESSION', $3, 'Admin deleted rejected/cancelled duty session', NOW())`,
+      [uuidv4(), req.user.id, JSON.stringify({ sessionId: id, supervisorId: session.supervisor_id, status: session.status })]
+    );
+
+    res.json({ message: 'Duty session and associated data deleted successfully', id });
+  } catch (err) {
+    console.error('Delete duty session error:', err);
+    res.status(500).json({ error: 'Failed to delete duty session: ' + err.message });
+  }
+});
+
+// 8. Admin End Duty with Meter Count & Final KM
+router.post('/:id/admin-end', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { metersInstalled, endKm, notes } = req.body;
+
+    const session = await db.queryOne('SELECT * FROM duty_sessions WHERE id = $1', [id]);
+    if (!session) {
+      return res.status(404).json({ error: 'Duty session not found' });
+    }
+
+    const meterCount = Math.max(0, parseInt(metersInstalled, 10) || 0);
+
+    const rawPoints = await db.queryAll(
+      `SELECT * FROM location_points WHERE duty_session_id = $1 ORDER BY recorded_at ASC`,
+      [session.id]
+    );
+
+    const { cleanedPoints, totalDistanceKm } = cleanGpsPoints(rawPoints);
+
+    // Batch update filtered points
+    const rawMap = new Map();
+    for (const r of rawPoints) {
+      rawMap.set(r.id, { is_filtered: Number(r.is_filtered) || 0, filter_reason: r.filter_reason || null });
+    }
+    const pointsToUpdate = [];
+    for (const pt of cleanedPoints) {
+      const prev = rawMap.get(pt.id);
+      const newFiltered = pt.is_filtered ? 1 : 0;
+      const newReason = pt.filter_reason || null;
+      if (!prev || prev.is_filtered !== newFiltered || prev.filter_reason !== newReason) {
+        pointsToUpdate.push({ id: pt.id, is_filtered: newFiltered, filter_reason: newReason });
+      }
+    }
+    if (pointsToUpdate.length > 0) {
+      const groups = new Map();
+      for (const p of pointsToUpdate) {
+        const key = `${p.is_filtered}:::${p.filter_reason || ''}`;
+        if (!groups.has(key)) groups.set(key, { is_filtered: p.is_filtered, filter_reason: p.filter_reason, ids: [] });
+        groups.get(key).ids.push(p.id);
+      }
+      for (const group of groups.values()) {
+        await db.run(
+          `UPDATE location_points SET is_filtered = $1, filter_reason = $2 WHERE id = ANY($3::text[])`,
+          [group.is_filtered, group.filter_reason, group.ids]
+        );
+      }
+    }
+
+    let finalEndKm;
+    if (endKm !== undefined && endKm !== null && endKm !== '' && !isNaN(parseFloat(endKm))) {
+      finalEndKm = parseFloat(endKm);
+    } else {
+      const startKm = session.start_odometer_final || 0;
+      finalEndKm = Number((startKm + totalDistanceKm).toFixed(2));
+    }
+
+    const rate = await getActiveRate('Bike');
+    const evaluation = evaluateConveyance({
+      startKm: session.start_odometer_final,
+      endKm: finalEndKm,
+      gpsDistanceKm: totalDistanceKm,
+      startOdoOcr: session.start_odometer_ocr,
+      startOdoManual: session.start_odometer_manual,
+      endOdoOcr: null,
+      endOdoManual: finalEndKm,
+      trackingGapMinutes: 0,
+      rate
+    });
+
+    await db.run(
+      `UPDATE duty_sessions SET
+        end_time = NOW(),
+        end_odometer_manual = $1,
+        end_odometer_final = $2,
+        gps_distance_km = $3,
+        odometer_distance_km = $4,
+        approved_distance_km = $5,
+        distance_selection_reason = 'Admin ended duty with entered meter count.',
+        conveyance_rate = $6,
+        conveyance_amount = $7,
+        status = 'PENDING_VERIFICATION',
+        review_notes = $8,
+        warnings = $9,
+        meters_installed = $10,
+        updated_at = NOW()
+      WHERE id = $11`,
+      [
+        finalEndKm,
+        finalEndKm,
+        evaluation.gpsDistanceKm,
+        evaluation.odometerDistanceKm,
+        evaluation.approvedDistanceKm,
+        evaluation.conveyanceRate,
+        evaluation.conveyanceAmount,
+        notes || 'Ended by Admin with meter count',
+        JSON.stringify(evaluation.warnings || []),
+        meterCount,
+        session.id
+      ]
+    );
+
+    await db.run(
+      `INSERT INTO audit_logs (id, user_id, duty_session_id, action, new_value, reason, created_at)
+       VALUES ($1, $2, $3, 'ADMIN_END_DUTY', $4, $5, NOW())`,
+      [
+        uuidv4(),
+        req.user.id,
+        session.id,
+        JSON.stringify({
+          startKm: session.start_odometer_final,
+          endKm: finalEndKm,
+          approvedKm: evaluation.approvedDistanceKm,
+          conveyance: evaluation.conveyanceAmount,
+          metersInstalled: meterCount
+        }),
+        notes || 'Admin ended duty with meter count'
+      ]
+    );
+
+    await syncAttendanceForCompletedDuty(session.id);
+
+    const completed = await db.queryOne(
+      `SELECT ds.*, u.name AS supervisor_name, u.employee_id, u.subdivision AS supervisor_subdivision
+       FROM duty_sessions ds JOIN users u ON u.id = ds.supervisor_id WHERE ds.id = $1`,
+      [session.id]
+    );
+
+    res.json({ message: 'Duty ended successfully by Admin', summary: completed });
+  } catch (err) {
+    console.error('Admin end duty error:', err);
+    res.status(500).json({ error: 'Failed to end duty: ' + err.message });
   }
 });
 

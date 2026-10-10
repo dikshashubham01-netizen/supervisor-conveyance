@@ -45,8 +45,11 @@ test('E2E Lifecycle: Auth -> Start Duty -> GPS Tracking -> End Duty -> Admin Ver
     // 1. Supervisor Login
     const loginRes = await fetch(`${baseUrl}/auth/login`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ employee_id: 'EMP001', password: 'supervisor123' })
+      headers: {
+        'Content-Type': 'application/json',
+        'x-app-version-code': '9999'
+      },
+      body: JSON.stringify({ employee_id: 'EMP001', password: 'Soumya@123' })
     });
     assert.strictEqual(loginRes.status, 200);
     const loginData = await loginRes.json();
@@ -58,7 +61,7 @@ test('E2E Lifecycle: Auth -> Start Duty -> GPS Tracking -> End Duty -> Admin Ver
     const adminLoginRes = await fetch(`${baseUrl}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ employee_id: 'admin', password: 'admin123' })
+      body: JSON.stringify({ employee_id: 'soumya.ghosh@genus.in', password: 'Soumya@123' })
     });
     assert.strictEqual(adminLoginRes.status, 200);
     const adminLoginData = await adminLoginRes.json();
@@ -134,6 +137,7 @@ test('E2E Lifecycle: Auth -> Start Duty -> GPS Tracking -> End Duty -> Admin Ver
     formDataEnd.append('odometerOcr', '15020');
     formDataEnd.append('odometerManual', '15020');
     formDataEnd.append('odometerFinal', '15020');
+    formDataEnd.append('metersInstalled', '5');
 
     const endDutyRes = await fetch(`${baseUrl}/duty/end`, {
       method: 'POST',
